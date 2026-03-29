@@ -12,6 +12,7 @@ import { WaveformTimeline } from '@/components/score/WaveformTimeline'
 import { MidiTimeline } from '@/components/score/MidiTimeline'
 import { ScoreControls } from '@/components/score/ScoreControls'
 import { useAppStore } from '@/lib/store'
+import { UploadWizard } from '@/components/studio/UploadWizard'
 import { useMusicFont } from '@/hooks/useMusicFont'
 import { getPlaybackManager } from '@/lib/engine/PlaybackManager'
 import { parseMidiFile } from '@/lib/midi/parser'
@@ -152,8 +153,9 @@ export default function AdminEditor() {
         finally { setSaving(false) }
     }
 
-    const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return
+    const handleAudioUpload = async (fileOrEvent: File | React.ChangeEvent<HTMLInputElement>) => {
+        const file = fileOrEvent instanceof File ? fileOrEvent : fileOrEvent.target.files?.[0]
+        if (!file) return
         try {
             const contentType = file.type || 'audio/wav'
             const { uploadUrl, finalFileUrl } = await generateUploadUrlAction(configId, 'audio', file.name, contentType)
@@ -162,11 +164,12 @@ export default function AdminEditor() {
             await updateConfigAction(configId, { audio_url: finalFileUrl })
             setConfig((prev) => prev ? { ...prev, audio_url: finalFileUrl } : prev)
         } catch (err) { console.error(err) }
-        e.target.value = ''
+        if (!(fileOrEvent instanceof File)) fileOrEvent.target.value = ''
     }
 
-    const handleXmlUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return
+    const handleXmlUpload = async (fileOrEvent: File | React.ChangeEvent<HTMLInputElement>) => {
+        const file = fileOrEvent instanceof File ? fileOrEvent : fileOrEvent.target.files?.[0]
+        if (!file) return
         try {
             const contentType = file.type || 'application/xml'
             const { uploadUrl, finalFileUrl } = await generateUploadUrlAction(configId, 'xml', file.name, contentType)
@@ -175,11 +178,12 @@ export default function AdminEditor() {
             await updateConfigAction(configId, { xml_url: finalFileUrl })
             setConfig((prev) => prev ? { ...prev, xml_url: finalFileUrl } : prev)
         } catch (err) { console.error(err) }
-        e.target.value = ''
+        if (!(fileOrEvent instanceof File)) fileOrEvent.target.value = ''
     }
 
-    const handleMidiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return
+    const handleMidiUpload = async (fileOrEvent: File | React.ChangeEvent<HTMLInputElement>) => {
+        const file = fileOrEvent instanceof File ? fileOrEvent : fileOrEvent.target.files?.[0]
+        if (!file) return
         try {
             const contentType = file.type || 'audio/midi'
             const { uploadUrl, finalFileUrl } = await generateUploadUrlAction(configId, 'midi', file.name, contentType)
@@ -193,7 +197,7 @@ export default function AdminEditor() {
             setParsedMidi(parsed); loadMidi(parsed)
             getPlaybackManager().duration = parsed.durationSec
         } catch (err) { console.error(err) }
-        e.target.value = ''
+        if (!(fileOrEvent instanceof File)) fileOrEvent.target.value = ''
     }
 
     const handleSetAnchor = useCallback((measure: number, time: number) => {
@@ -494,6 +498,31 @@ export default function AdminEditor() {
         return (
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
                 <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        )
+    }
+
+    if (!config?.audio_url || !config?.xml_url || !config?.midi_url) {
+        return (
+            <div className="min-h-screen bg-zinc-950 flex flex-col">
+                <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Button variant="ghost" size="sm" onClick={() => router.push('/studio')} className="text-zinc-400 hover:text-white">
+                            <ArrowLeft className="w-4 h-4 mr-1" /> Back
+                        </Button>
+                        <span className="text-white text-lg font-medium">{title || 'Untitled Song'}</span>
+                    </div>
+                </div>
+                <div className="flex-1 overflow-auto">
+                    {config && (
+                        <UploadWizard
+                            config={config}
+                            onUploadAudio={handleAudioUpload}
+                            onUploadXml={handleXmlUpload}
+                            onUploadMidi={handleMidiUpload}
+                        />
+                    )}
+                </div>
             </div>
         )
     }
