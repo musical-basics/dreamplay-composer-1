@@ -39,6 +39,7 @@ import { getPlaybackManager } from '@/lib/engine/PlaybackManager'
 import { parseMidiFile } from '@/lib/midi/parser'
 import { DEMO_CONFIG } from '@/lib/demoConfig'
 import type { ParsedMidi, BeatAnchor, XMLEvent, V5MapperState } from '@/lib/types'
+import { getAudioOffset } from '@/lib/engine/AudioHelpers'
 
 export default function AdminDemoEditor() {
     const router = useRouter()
@@ -246,55 +247,7 @@ export default function AdminDemoEditor() {
     }, [])
 
     // ─── Auto-mapping handlers ────────────────────────────────────
-    const handleAutoMap = useCallback(async () => {
-        if (!parsedMidi) { alert('Please load a MIDI file first.'); return }
-        if (totalMeasures === 0 || noteCounts.size === 0) { alert('Please wait for score to process.'); return }
-
-        if (confirm('Run AI-assisted Auto-Map?\n\nThis uses the local heuristic algorithm to establish a baseline, then sends it to Gemini to intelligently adjust for ritardandos/rubatos.')) {
-            setIsAiMapping(true)
-            try {
-                const { autoMapMidiToScore } = await import('@/lib/engine/AutoMapper')
-                const baseline = autoMapMidiToScore(parsedMidi.notes, noteCounts, totalMeasures)
-                setAnchors(baseline)
-                setBeatAnchors([])
-            } catch (err) {
-                console.error('[Auto Map Error]', err)
-                alert('Auto-mapping failed.')
-            } finally {
-                setIsAiMapping(false)
-            }
-        }
-    }, [parsedMidi, noteCounts, totalMeasures, setAnchors, setBeatAnchors])
-
-    const handleAutoMapV4 = useCallback(async () => {
-        if (!parsedMidi) { alert('Please load a MIDI file first.'); return }
-        if (totalMeasures === 0 || xmlEvents.length === 0) { alert('Please wait for score to process.'); return }
-
-        if (confirm('Run V4 Note-By-Note Auto-Map?')) {
-            setIsAiMapping(true)
-            try {
-                const { autoMapByNoteV4, getAudioOffset } = await import('@/lib/engine/AutoMapper')
-                const audioOffset = await getAudioOffset(config.audio_url || null)
-
-                const { anchors: newAnchors, beatAnchors: newBeatAnchors } = autoMapByNoteV4(
-                    parsedMidi.notes, xmlEvents, totalMeasures, audioOffset
-                )
-
-                if (newAnchors.length > 0) {
-                    setAnchors(newAnchors)
-                    setBeatAnchors(newBeatAnchors)
-                    setIsLevel2Mode(true)
-                }
-            } catch (err) {
-                console.error(err)
-                alert('V4 mapping failed.')
-            } finally {
-                setIsAiMapping(false)
-            }
-        }
-    }, [parsedMidi, xmlEvents, totalMeasures, config.audio_url, setAnchors, setBeatAnchors, setIsLevel2Mode])
-
-    const handleStartV5 = useCallback(async (chordThresholdFraction: number) => {
+    const handleAutoMap = useCallback(async (chordThresholdFraction: number) => {
         if (!parsedMidi) { alert('Please load a MIDI file first.'); return }
         if (totalMeasures === 0 || xmlEventsRef.current.length === 0) { alert('Please wait for score to process.'); return }
 
@@ -302,7 +255,15 @@ export default function AdminDemoEditor() {
         try {
             const { initV5, stepV5 } = await import('@/lib/engine/AutoMapperV5')
 
-            let state = initV5(parsedMidi.notes, xmlEventsRef.current, 0, chordThresholdFraction)
+            // Detect audio peak for initial offset
+            let audioOffset = 0
+            try {
+                audioOffset = await getAudioOffset(config.audio_url || null)
+            } catch (e) {
+                console.warn('[AutoMap] Audio peak detection failed, using 0s offset')
+            }
+
+            let state = initV5(parsedMidi.notes, xmlEventsRef.current, audioOffset, chordThresholdFraction)
 
             while (state.status === 'running') {
                 state = stepV5(state, parsedMidi.notes, xmlEventsRef.current)
@@ -320,12 +281,12 @@ export default function AdminDemoEditor() {
                 setIsLevel2Mode(true)
             }
         } catch (err) {
-            console.error('[V5 Error]', err)
-            alert('V5 mapping failed.')
+            console.error('[AutoMap Error]', err)
+            alert('Auto-mapping failed.')
         } finally {
             setIsAiMapping(false)
         }
-    }, [parsedMidi, totalMeasures, setAnchors, setBeatAnchors, setIsLevel2Mode])
+    }, [parsedMidi, totalMeasures, config.audio_url, setAnchors, setBeatAnchors, setIsLevel2Mode])
 
     const handleConfirmGhost = useCallback(async () => {
         if (!v5State || v5State.status !== 'paused' || !v5State.ghostAnchor || !parsedMidi) return
@@ -403,8 +364,6 @@ export default function AdminDemoEditor() {
                     onTap={handleTap}
                     onClearAll={handleClearAll}
                     onAutoMap={handleAutoMap}
-                    onAutoMapV4={handleAutoMapV4}
-                    onAutoMapV5={handleStartV5}
                     onConfirmGhost={handleConfirmGhost}
                     onProceedMapping={handleProceedMapping}
                     onRunV5ToEnd={handleRunV5ToEnd}

@@ -30,9 +30,7 @@ interface AnchorSidebarProps {
     onRegenerateBeats?: () => void
     onTap?: () => void
     onClearAll?: () => void
-    onAutoMap?: () => void
-    onAutoMapV4?: () => void
-    onAutoMapV5?: (chordThresholdFraction: number) => void
+    onAutoMap?: (chordThresholdFraction: number) => void
     onConfirmGhost?: () => void
     onProceedMapping?: () => void
     onRunV5ToEnd?: () => void
@@ -58,8 +56,6 @@ export const AnchorSidebar: React.FC<AnchorSidebarProps> = ({
     onTap,
     onClearAll,
     onAutoMap,
-    onAutoMapV4,
-    onAutoMapV5,
     onConfirmGhost,
     onProceedMapping,
     onRunV5ToEnd,
@@ -207,8 +203,6 @@ export const AnchorSidebar: React.FC<AnchorSidebarProps> = ({
                             onClearAll={onClearAll}
                             onTap={onTap}
                             onAutoMap={onAutoMap}
-                            onAutoMapV4={onAutoMapV4}
-                            onAutoMapV5={onAutoMapV5}
                             onConfirmGhost={onConfirmGhost}
                             onProceedMapping={onProceedMapping}
                             onRunV5ToEnd={onRunV5ToEnd}
@@ -251,9 +245,7 @@ interface V5ControlsProps {
     v5State?: V5MapperState | null
     onClearAll?: () => void
     onTap?: () => void
-    onAutoMap?: () => void
-    onAutoMapV4?: () => void
-    onAutoMapV5?: (chordThresholdFraction: number) => void
+    onAutoMap?: (chordThresholdFraction: number) => void
     onConfirmGhost?: () => void
     onProceedMapping?: () => void
     onRunV5ToEnd?: () => void
@@ -262,51 +254,27 @@ interface V5ControlsProps {
 
 const V5Controls: React.FC<V5ControlsProps> = ({
     darkMode, border, currentMeasure, isAiMapping, v5State,
-    onClearAll, onTap, onAutoMap, onAutoMapV4, onAutoMapV5,
+    onClearAll, onTap, onAutoMap,
     onConfirmGhost, onProceedMapping, onRunV5ToEnd, onUpdateGhostTime,
 }) => {
-    const [selectedVersion, setSelectedVersion] = useState<'v3' | 'v4' | 'v5'>('v5')
     const [chordThreshold, setChordThreshold] = useState<number>(0.0625) // 64th note default
-
     const isV5Active = v5State && (v5State.status === 'running' || v5State.status === 'paused')
-
-    const handleRunAutoMap = () => {
-        if (selectedVersion === 'v3' && onAutoMap) onAutoMap()
-        else if (selectedVersion === 'v4' && onAutoMapV4) onAutoMapV4()
-        else if (selectedVersion === 'v5' && onAutoMapV5) onAutoMapV5(chordThreshold)
-    }
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Version Selector */}
             <div className="space-y-2">
-                <div className="flex flex-col gap-1.5">
-                    <Label className="text-[10px] uppercase font-bold text-zinc-500">Mapping Strategy</Label>
-                    <select
-                        value={selectedVersion}
-                        onChange={(e) => setSelectedVersion(e.target.value as 'v3' | 'v4' | 'v5')}
-                        disabled={isAiMapping || !!isV5Active}
-                        className={`w-full text-xs px-2 py-1.5 rounded ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-zinc-100 border-zinc-200'
-                            } border focus:outline-none focus:ring-1 focus:ring-purple-500/50 disabled:opacity-50`}
-                    >
-                        <option value="v3">V3 — Heuristic + Gemini</option>
-                        <option value="v4">V4 — Frame-Sync</option>
-                        <option value="v5">V5 — Echolocation</option>
-                    </select>
-                </div>
-
-                {selectedVersion === 'v5' && !isV5Active && (
+                {!isV5Active && (
                     <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                        <Label className="text-[10px] uppercase font-bold text-zinc-500">Chord Threshold</Label>
+                        <Label className="text-[10px] uppercase font-bold text-zinc-500">Mapping Sensitivity</Label>
                         <select
                             value={chordThreshold}
                             onChange={(e) => setChordThreshold(Number(e.target.value))}
                             className={`w-full text-xs px-2 py-1.5 rounded ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-zinc-100 border-zinc-200'
                                 } border focus:outline-none focus:ring-1 focus:ring-purple-500/50`}
                         >
-                            <option value={0.0625}>64th note (Strict)</option>
-                            <option value={0.125}>32nd note</option>
-                            <option value={0.25}>16th note (Loose)</option>
+                            <option value={0.0625}>Strict (64th note)</option>
+                            <option value={0.125}>Standard (32nd note)</option>
+                            <option value={0.25}>Loose (16th note)</option>
                         </select>
                     </div>
                 )}
@@ -315,23 +283,16 @@ const V5Controls: React.FC<V5ControlsProps> = ({
             {/* AI Control Button */}
             <Button
                 size="sm"
-                onClick={handleRunAutoMap}
+                onClick={() => onAutoMap?.(chordThreshold)}
                 disabled={isAiMapping || !!isV5Active}
-                className={`w-full text-[11px] font-bold h-9 transition-all disabled:opacity-50 ${selectedVersion === 'v5'
-                        ? 'bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 text-white'
-                        : selectedVersion === 'v4'
-                            ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20 text-white'
-                            : 'bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20 text-white'
-                    }`}
+                className="w-full text-[11px] font-bold h-9 transition-all disabled:opacity-50 bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 text-white"
             >
                 {isAiMapping
                     ? 'Processing...'
                     : (
                         <div className="flex items-center gap-2">
                             <Wand2 className="w-3.5 h-3.5" />
-                            {selectedVersion === 'v5' ? 'Start Echolocation'
-                                : selectedVersion === 'v4' ? 'Start Frame-Sync'
-                                    : 'Start AI Mapping'}
+                            Auto-Map Performance
                         </div>
                     )
                 }

@@ -34,6 +34,7 @@ import { getPlaybackManager } from '@/lib/engine/PlaybackManager'
 import { parseMidiFile } from '@/lib/midi/parser'
 import type { SongConfig, ParsedMidi, BeatAnchor, XMLEvent, V5MapperState } from '@/lib/types'
 import { fetchConfigById, updateConfigAction, generateUploadUrlAction } from '@/app/actions/config'
+import { getAudioOffset } from '@/lib/engine/AudioHelpers'
 
 export default function AdminEditor() {
     const params = useParams()
@@ -337,92 +338,7 @@ export default function AdminEditor() {
         }
     }, [])
 
-    const handleAutoMap = useCallback(async () => {
-        if (!parsedMidi) {
-            alert('Please load a MIDI file first.')
-            return
-        }
-        if (totalMeasures === 0 || noteCounts.size === 0) {
-            alert('Please wait for the MusicXML score to finish processing.')
-            return
-        }
-
-        if (confirm('Run AI-assisted Auto-Map?\n\nThis uses the local heuristic algorithm to establish a baseline, then sends it to Gemini to intelligently adjust for ritardandos/rubatos.')) {
-            setIsAiMapping(true)
-            try {
-                // 1. Calculate Mathematical Baseline Heuristic (Locally)
-                const { autoMapMidiToScore } = await import('@/lib/engine/AutoMapper')
-                const baseline = autoMapMidiToScore(parsedMidi.notes, noteCounts, totalMeasures)
-
-                // 2. Compress MIDI into clusters (saves tokens, makes AI reasoning easier)
-                const simplifiedMidi = parsedMidi.notes.map(n => ({
-                    t: Number(n.startTimeSec.toFixed(3)),
-                    p: n.pitch
-                }))
-
-                // Convert ES6 Map to plain object for JSON transmission
-                const expectedCountsObj: Record<number, number> = {}
-                noteCounts.forEach((count, measure) => {
-                    expectedCountsObj[measure] = count
-                })
-
-                // 3. Send to Gemini for intelligent correction
-                const { generateAiAnchors } = await import('@/app/actions/ai')
-                const aiAnchors = await generateAiAnchors(totalMeasures, expectedCountsObj, baseline, simplifiedMidi)
-
-                if (aiAnchors && aiAnchors.length > 0) {
-                    setAnchors(aiAnchors)
-                    setBeatAnchors([]) // Clear beats since measure boundaries shifted
-                } else {
-                    alert('AI returned an empty mapping. Falling back to heuristic.')
-                    setAnchors(baseline)
-                    setBeatAnchors([])
-                }
-            } catch (err) {
-                console.error('[AI Map Error]', err)
-                alert('AI mapping failed (check console/API key). Falling back to pure heuristic baseline.')
-                // 4. Graceful Fallback to pure heuristic
-                const { autoMapMidiToScore } = await import('@/lib/engine/AutoMapper')
-                const heuristicAnchors = autoMapMidiToScore(parsedMidi.notes, noteCounts, totalMeasures)
-                setAnchors(heuristicAnchors)
-                setBeatAnchors([])
-            } finally {
-                setIsAiMapping(false)
-            }
-        }
-    }, [parsedMidi, noteCounts, totalMeasures, setAnchors, setBeatAnchors])
-
-    // V4: Note-by-Note Explicit Rhythmic Mapping
-    const handleAutoMapV4 = useCallback(async () => {
-        if (!parsedMidi) { alert('Please load a MIDI file first.'); return; }
-        if (totalMeasures === 0 || xmlEvents.length === 0) { alert('Please wait for score to process.'); return; }
-
-        if (confirm('Run V4 Note-By-Note Auto-Map?\n\nThis will detect the audio offset, extract rhythmic chords from both MIDI and XML, and map them 1:1.')) {
-            setIsAiMapping(true);
-            try {
-                const { autoMapByNoteV4, getAudioOffset } = await import('@/lib/engine/AutoMapper');
-                const audioOffset = await getAudioOffset(config?.audio_url || null);
-
-                const { anchors: newAnchors, beatAnchors: newBeatAnchors } = autoMapByNoteV4(
-                    parsedMidi.notes, xmlEvents, totalMeasures, audioOffset
-                );
-
-                if (newAnchors.length > 0) {
-                    setAnchors(newAnchors);
-                    setBeatAnchors(newBeatAnchors);
-                    setIsLevel2Mode(true); // Force Level 2 mode ON so the fractional beat anchors are used!
-                }
-            } catch (err) {
-                console.error(err);
-                alert('V4 mapping failed.');
-            } finally {
-                setIsAiMapping(false);
-            }
-        }
-    }, [parsedMidi, xmlEvents, totalMeasures, config?.audio_url, setAnchors, setBeatAnchors, setIsLevel2Mode]);
-
-    // V5: Echolocation Interactive Mapper
-    const handleStartV5 = useCallback(async (chordThresholdFraction: number) => {
+    const handleAutoMap = useCallback(async (chordThresholdFraction: number) => {
         if (!parsedMidi) { alert('Please load a MIDI file first.'); return; }
         if (totalMeasures === 0 || xmlEventsRef.current.length === 0) { alert('Please wait for score to process.'); return; }
 
@@ -430,7 +346,15 @@ export default function AdminEditor() {
         try {
             const { initV5, stepV5 } = await import('@/lib/engine/AutoMapperV5');
 
-            let state = initV5(parsedMidi.notes, xmlEventsRef.current, 0, chordThresholdFraction);
+            // Detect audio peak for initial offset (optional but helpful)
+            let audioOffset = 0;
+            try {
+                audioOffset = await getAudioOffset(config?.audio_url || null);
+            } catch (e) {
+                console.warn('[AutoMap] Audio peak detection failed, using 0s offset');
+            }
+
+            let state = initV5(parsedMidi.notes, xmlEventsRef.current, audioOffset, chordThresholdFraction);
 
             // Auto-run steps until paused or done
             while (state.status === 'running') {
@@ -450,8 +374,8 @@ export default function AdminEditor() {
                 setIsLevel2Mode(true);
             }
         } catch (err) {
-            console.error('[V5 Error]', err);
-            alert('V5 mapping failed (check console).');
+            console.error('[AutoMap Error]', err);
+            alert('Auto-mapping failed (check console).');
         } finally {
             setIsAiMapping(false);
         }
@@ -571,8 +495,6 @@ export default function AdminEditor() {
                     onTap={handleTap}
                     onClearAll={handleClearAll}
                     onAutoMap={handleAutoMap}
-                    onAutoMapV4={handleAutoMapV4}
-                    onAutoMapV5={handleStartV5}
                     onConfirmGhost={handleConfirmGhost}
                     onProceedMapping={handleProceedMapping}
                     onRunV5ToEnd={handleRunV5ToEnd}

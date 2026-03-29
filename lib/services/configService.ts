@@ -150,7 +150,7 @@ export async function getPublishedConfigs(): Promise<SongConfig[]> {
 
 export async function updateConfig(
     id: string,
-    updates: Partial<Pick<SongConfig, 'title' | 'audio_url' | 'xml_url' | 'midi_url' | 'anchors' | 'beat_anchors' | 'subdivision' | 'is_level2' | 'ai_anchors' | 'is_published'>>,
+    updates: Partial<Pick<SongConfig, 'title' | 'audio_url' | 'xml_url' | 'midi_url' | 'anchors' | 'beat_anchors' | 'subdivision' | 'is_level2' | 'is_published' | 'music_font'>>,
     userId: string
 ): Promise<SongConfig> {
     const sb = getSupabase()
@@ -192,18 +192,3 @@ export async function togglePublish(id: string, published: boolean, userId: stri
     await updateConfig(id, { is_published: published }, userId)
 }
 
-// ─── Corrections for AI Learning ─────────────────────────────────
-
-export async function getConfigsWithCorrections(userId: string): Promise<SongConfig[]> {
-    const sb = getSupabase()
-    const { data, error } = await sb
-        .from('configurations')
-        .select('*')
-        .eq('user_id', userId)
-        .not('ai_anchors', 'is', null)
-        .order('updated_at', { ascending: false })
-        .limit(10)
-
-    if (error) throw new Error(`Failed to get configs with corrections: ${error.message}`)
-    return (data || []) as SongConfig[]
-}
