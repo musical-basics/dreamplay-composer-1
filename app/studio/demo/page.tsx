@@ -77,6 +77,9 @@ export default function AdminDemoEditor() {
     const currentMeasure = useAppStore((s) => s.currentMeasure)
     const duration = useAppStore((s) => s.duration)
     const loadMidi = useAppStore((s) => s.loadMidi)
+    const showMidiTimeline = useAppStore((s) => s.showMidiTimeline)
+    const showWaveformTimeline = useAppStore((s) => s.showWaveformTimeline)
+    const showAnchorSidebar = useAppStore((s) => s.showAnchorSidebar)
 
     // ─── Load config (sync from hardcoded data) ───────────────────
     useEffect(() => {
@@ -361,32 +364,34 @@ export default function AdminDemoEditor() {
     return (
         <>
         <div className="h-screen flex overflow-hidden bg-zinc-950">
-            <AnchorSidebar
-                anchors={anchors}
-                beatAnchors={beatAnchors}
-                currentMeasure={currentMeasure}
-                totalMeasures={totalMeasures || 100}
-                isLevel2Mode={isLevel2Mode}
-                subdivision={subdivision}
-                darkMode={darkMode}
-                onSetAnchor={handleSetAnchor}
-                onDeleteAnchor={handleDeleteAnchor}
-                onSetBeatAnchor={handleSetBeatAnchor}
-                onToggleLevel2={setIsLevel2Mode}
-                onSetSubdivision={setSubdivision}
-                onRegenerateBeats={handleRegenerateBeats}
-                onTap={handleTap}
-                onClearAll={handleClearAll}
-                onAutoMap={handleAutoMap}
-                onAutoMapV4={handleAutoMapV4}
-                onAutoMapV5={handleStartV5}
-                onConfirmGhost={handleConfirmGhost}
-                onProceedMapping={handleProceedMapping}
-                onRunV5ToEnd={handleRunV5ToEnd}
-                onUpdateGhostTime={handleUpdateGhostTime}
-                v5State={v5State}
-                isAiMapping={isAiMapping}
-            />
+            {showAnchorSidebar && (
+                <AnchorSidebar
+                    anchors={anchors}
+                    beatAnchors={beatAnchors}
+                    currentMeasure={currentMeasure}
+                    totalMeasures={totalMeasures || 100}
+                    isLevel2Mode={isLevel2Mode}
+                    subdivision={subdivision}
+                    darkMode={darkMode}
+                    onSetAnchor={handleSetAnchor}
+                    onDeleteAnchor={handleDeleteAnchor}
+                    onSetBeatAnchor={handleSetBeatAnchor}
+                    onToggleLevel2={setIsLevel2Mode}
+                    onSetSubdivision={setSubdivision}
+                    onRegenerateBeats={handleRegenerateBeats}
+                    onTap={handleTap}
+                    onClearAll={handleClearAll}
+                    onAutoMap={handleAutoMap}
+                    onAutoMapV4={handleAutoMapV4}
+                    onAutoMapV5={handleStartV5}
+                    onConfirmGhost={handleConfirmGhost}
+                    onProceedMapping={handleProceedMapping}
+                    onRunV5ToEnd={handleRunV5ToEnd}
+                    onUpdateGhostTime={handleUpdateGhostTime}
+                    v5State={v5State}
+                    isAiMapping={isAiMapping}
+                />
+            )}
 
             <div className="flex-1 flex flex-col overflow-hidden">
                 <div className="flex flex-col bg-zinc-900 border-b border-zinc-800 shrink-0">
@@ -689,29 +694,33 @@ export default function AdminDemoEditor() {
                 </div>
 
                 <div className="shrink-0 flex flex-col gap-0.5">
-                    <MidiTimeline
-                        parsedMidi={parsedMidi}
-                        anchors={anchors}
-                        beatAnchors={beatAnchors}
-                        ghostAnchor={v5State?.ghostAnchor}
-                        isPlaying={isPlaying}
-                        duration={duration}
-                        onSeek={handleSeek}
-                        onAnchorDrag={handleSetAnchor}
-                        onBeatAnchorDrag={handleSetBeatAnchor}
-                        darkMode={darkMode}
-                    />
-                    <WaveformTimeline
-                        audioUrl={config.audio_url || null}
-                        anchors={anchors}
-                        beatAnchors={beatAnchors}
-                        isPlaying={isPlaying}
-                        duration={duration}
-                        onSeek={handleSeek}
-                        onAnchorDrag={handleSetAnchor}
-                        onBeatAnchorDrag={handleSetBeatAnchor}
-                        darkMode={darkMode}
-                    />
+                    {showMidiTimeline && (
+                        <MidiTimeline
+                            parsedMidi={parsedMidi}
+                            anchors={anchors}
+                            beatAnchors={beatAnchors}
+                            ghostAnchor={v5State?.ghostAnchor}
+                            isPlaying={isPlaying}
+                            duration={duration}
+                            onSeek={handleSeek}
+                            onAnchorDrag={handleSetAnchor}
+                            onBeatAnchorDrag={handleSetBeatAnchor}
+                            darkMode={darkMode}
+                        />
+                    )}
+                    {showWaveformTimeline && (
+                        <WaveformTimeline
+                            audioUrl={config.audio_url || null}
+                            anchors={anchors}
+                            beatAnchors={beatAnchors}
+                            isPlaying={isPlaying}
+                            duration={duration}
+                            onSeek={handleSeek}
+                            onAnchorDrag={handleSetAnchor}
+                            onBeatAnchorDrag={handleSetBeatAnchor}
+                            darkMode={darkMode}
+                        />
+                    )}
                 </div>
             </div>
         </div>

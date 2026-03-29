@@ -264,7 +264,7 @@ export const SplitScreenLayout: React.FC<SplitScreenLayoutProps> = ({
                     </div>
                 </div>
 
-                <PianoKeyboard />
+                {showWaterfall && <PianoKeyboard />}
             </div>
         </div>
     )

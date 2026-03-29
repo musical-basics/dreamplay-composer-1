@@ -23,6 +23,9 @@ interface AppStore {
     noteGlow: boolean // true = glow aura on active notes
     showScore: boolean // show sheet music view
     showWaterfall: boolean // show waterfall view
+    showMidiTimeline: boolean // show MIDI timeline
+    showWaveformTimeline: boolean // show Waveform timeline
+    showAnchorSidebar: boolean // show Anchor sidebar
 
     // === Score Follower State ===
     anchors: Anchor[]
@@ -59,6 +62,9 @@ interface AppStore {
     setNoteGlow: (on: boolean) => void
     setShowScore: (on: boolean) => void
     setShowWaterfall: (on: boolean) => void
+    setShowMidiTimeline: (on: boolean) => void
+    setShowWaveformTimeline: (on: boolean) => void
+    setShowAnchorSidebar: (on: boolean) => void
 
     // === Score Follower Actions ===
     setAnchors: (anchors: Anchor[]) => void
@@ -99,7 +105,10 @@ export const useAppStore = create<AppStore>()(
             velocityKeyColor: false,
             noteGlow: true,
             showScore: true,
-            showWaterfall: true,
+            showWaterfall: false, // Default to false per redesign plan
+            showMidiTimeline: false,
+            showWaveformTimeline: false,
+            showAnchorSidebar: false,
 
             // === Score Follower Initial State ===
             anchors: [{ measure: 1, time: 0 }],
@@ -147,6 +156,9 @@ export const useAppStore = create<AppStore>()(
             setNoteGlow: (noteGlow) => set({ noteGlow }),
             setShowScore: (showScore) => set({ showScore }),
             setShowWaterfall: (showWaterfall) => set({ showWaterfall }),
+            setShowMidiTimeline: (showMidiTimeline) => set({ showMidiTimeline }),
+            setShowWaveformTimeline: (showWaveformTimeline) => set({ showWaveformTimeline }),
+            setShowAnchorSidebar: (showAnchorSidebar) => set({ showAnchorSidebar }),
 
             // === Score Follower Actions ===
             setAnchors: (anchors) => set({ anchors }),
@@ -186,6 +198,9 @@ export const useAppStore = create<AppStore>()(
                 showCursor: state.showCursor,
                 showScore: state.showScore,
                 showWaterfall: state.showWaterfall,
+                showMidiTimeline: state.showMidiTimeline,
+                showWaveformTimeline: state.showWaveformTimeline,
+                showAnchorSidebar: state.showAnchorSidebar,
                 velocityKeyColor: state.velocityKeyColor,
                 noteGlow: state.noteGlow,
                 cursorPosition: state.cursorPosition,
