@@ -1,0 +1,39 @@
+{
+    "output": {
+        "filePath": "repomix-output.xml",
+        "style": "xml"
+    },
+    "ignore": {
+        "useGitignore": true,
+        "useDefaultPatterns": true,
+        "customPatterns": [
+            "node_modules",
+            ".next",
+            ".git",
+            "pnpm-lock.yaml",
+            "*.xml",
+            "*.musicxml",
+            "*.mid",
+            "*.wav",
+            "*.mp3",
+            "score-repomix-output.xml",
+            "synth-repomix-output.xml",
+            "repomix-output.xml",
+            "ultimate-repomix-output.xml",
+            "logic.html",
+            "tsconfig.tsbuildinfo",
+            ".env.local",
+            "migrations/**",
+            "_backup_files/**",
+            "docs/**",
+            "public/demo/**",
+            "video_renderer_instructions.md",
+            "components.json",
+            "worker/**",
+            "components/ui/**",
+            "postcss.config.mjs",
+            "next-env.d.ts",
+            "hooks/**"
+        ]
+    }
+}

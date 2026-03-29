@@ -1,0 +1,74 @@
+this model seems like it works a bit better, but it's still not ideal. ok i was thinking actually, let's just make a few
+different models and see which one works the best. (that way we don't accidentally override any previous logic that was
+good). so the user sholud be able to select which model (v3, v4, etc) as we improve this. here's our repomix and here's
+what i'm thinking for v5.
+
+v5: back to heuristic only. the reason is because i thought about something that makes the most sense, which is
+approaching this mapping thing like a real musician. first, we look at the time signature. 3/4. therefore, we know that
+each measure is divided into 3 quarter notes. so we look at the first note of the xml. what is it? a quarter note of the
+note A2. now we look at the midi file. what's the first note? A2. that's a 100% match, which means the timestamp
+beginning of the MIDI note A2, is 100% the beginning of the xml. now let's look at the next note. what do we see - E3
+and C4 (middle C). so now we look at the next MIDI note. in the example, the first MIDI note (after A2) is C4 (since I
+played C4 a tiny millisecond before E3). so boom, our heuristic matches up that next note. what's the time elapsed
+between the A2 (first beat) and the C4 note that we just found? in this case, it's something like 500 milliseconds. so
+now we know that currently, the performer is playing around 120bpm (since 120 bpm means each beat is 500 milliseconds.
+60 bpm means each beat is 1 second). now of course, because we know the performance isn't tempo-timed, we're gonna give
+it a buffer, let's say 100ms on each side for QUARTER notes. (+/- 20%). what does that also mean? that eighth notes, is
+going to be something like 250ms (+/-20%). and sixteenth notes, those are 125ms. 32nd notes, those are 62.5ms. (let's
+not go above 32nd notes for now).
+
+now we look for the next note. E3 - look, it's right after C4, but probably 1-2 milliseconds. so let's consider our
+current timings. if the smallest interval is 32nd notes and has a threshold of 62.5ms, then it's quite obvious that our
+E3 which is only at most 2ms after the C4, is within the same chord. so we can map E3 to the C4 "chord" and have logic
+that says "ok, clearly 100% of the notes of the chord on beat 2 of measure 1 was played" and map the timing of that beat
+2, to the exact time of the C4 note (we'll always use the "first" note of appearance, in the chord)
+
+now let's skip a bit ahead to measure 3, where we have the right hand join in. as we can see, the first 2 notes of beat
+1 of m3, is A2 (on LH) and E4 (on RH). the MIDI notes aren't separated by left/right channels, but that shouldn't affect
+the accuracy of our calculation. so we look at this first beat of m3, and we know it's a quarter note E4, quarter note
+A2. ok, great. so let's map this first chord to our "moment of playback" dictionary. this is what our "echolocation"
+search looks for. and where's it looking from? only for notes AFTER the beat 3 of the previous measure (since everytime
+we map a new beat, we create a new anchor. so the current "time of playback", is of course after the latest anchor
+(let's say m2 beat 3 was approximately 2.5 seconds, keeping in line with our calculation so far that every beat is
+500ms).
+
+so now we look for the next notes A2 and E4. boom, we find it coming up, around the 3 second mark, well within the
++20/-20% buffer. that means indeed, "playback is happening as normal", aka no rubato or ritardando/accelerandos are
+taking place. so once again, we see which note is happening here - looks like it's the A2 note first. the A2 note
+becomes the 1st beat of m3 and whatever the timing of that A2 note, becomes the timestamp for the anchor.
+
+now let's look at beat 2 of M3. what do we have here - E3/C4 quarter note chord, and F#4 eighth note in the right hand.
+so now, we're going to first see which one appeared first - looks like F#4 by a millisecond. ok, and the other 2 notes
+(E3 and C4) are not far behind, maybe at most 5ms spread, which is well underneath the 62.5ms "32nd note" threshold.
+great, all 3 of these notes get mapped to the 2nd beat of measure 3, with the anchor point being placed at the F#4
+timestamp.
+
+now because we have musicxml, we know the next note we expect - a G# eighth note. and we know that the F# eighth note
+was just played, which means instead of searching 500ms ahead (like we did for the past 2 measures when only quarter
+notes were being played), we now search forward 250ms +20/-20%. what do we see? a G# note within that range in the MIDI
+note. and what do we have in our "expected next note" parameter? (after F#4 was mapped)? G#4! so now we know, the next
+anchor point, is the timestamp of G#4. and we know also, that this is NOT the 3rd beat of measure 3, because we know
+from that the past 2 notes (so whenever there's a "chord" situation, such as beat 2 of m3, where 1 note is an eighth
+note and the other 2 notes are quarter notes, our "echolocation" scanner looks for notes within the time range of the
+SMALLEST note value. so because we had an eighth note, we look for 250ms, otherwise we'd look for 500ms ahead (of
+course, with the usual "buffer"). so now, we know that the anchor point of G#4 is NOT "M3 B3" (measure 3 beat 3), but
+rather "M3 B2.5".
+
+And then what is G#4's "note length"? eighth note, which means 250ms, again! And what do we find next? boom, the next 3
+notes that we are expecting for beat 3 of M3 - which is E3/C4 chord in LH, and A4 in RH. now once again, we map this
+whole chord to the timestamp of the earliest note, in this case it would be E3. and we look for this whole block's
+smallest note length - any eighth notes? Nope. Only quarter notes in M3 B3. therefore, we can safely go back to the
+"scan zone" of 500ms (rather than the 250ms that we employed after M3 B2.5).
+
+now of course, we should have a 2nd order calculated number. which is the "average quarter note time length (AQNTL) so
+far". let's say the performer started at 120bpm, but started getting faster to 130bpm. so now our AQNTL is probably
+something like 450ms rather than the previous 500ms. no problem. our scanners now scan 450ms (+/-20%) for quarter notes,
+225ms (+/-20%) for eighth notes, and so on. this AQNTL is calculated by what... you guessed it... the anchor points
+we've mapped so far! If the anchor points we mapped for m1 was 1.5s (3 quarter notes of 500ms each), then we can safely
+assume that the current played BPM is 120bpm. if the anchor points we mapped for m1 was 1.45s, then we can assume the
+current bpm is a bit higher, like 122bpm.
+
+makes sense? now of course, we're gonna have to add logic later for ritardandos, accelerandos, fermatas, caesuras, tempo
+changes, etc. but assuming a piece performed mostly "straight", our logic above should be able to handle the mapping of
+live tempo changes, to pinpoint note accuracy, all because we have the live performance MIDI and musicXML (the musicXML
+of course is generated from an app like Sibelius, and is 100% tempo mapped).
