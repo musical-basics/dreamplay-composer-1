@@ -4,7 +4,7 @@
  * Server Actions for configuration CRUD — keeps service role key server-side.
  */
 
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@clerk/nextjs/server'
 import {
     getAllConfigs,
     getPublishedConfigs,
@@ -20,10 +20,9 @@ import {
 import type { SongConfig, Anchor, BeatAnchor } from '@/lib/types'
 
 async function getAuthUser() {
-    const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
-    if (error || !user) throw new Error('Unauthorized')
-    return user
+    const { userId } = await auth()
+    if (!userId) throw new Error('Unauthorized')
+    return { id: userId }
 }
 
 export async function fetchAllConfigs(): Promise<SongConfig[]> {
@@ -36,11 +35,10 @@ export async function fetchPublishedConfigs(): Promise<SongConfig[]> {
 }
 
 export async function fetchConfigById(id: string): Promise<SongConfig | null> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { userId } = await auth()
     
-    if (user) {
-        return getConfigById(id, user.id)
+    if (userId) {
+        return getConfigById(id, userId)
     }
     return getPublicConfigById(id)
 }

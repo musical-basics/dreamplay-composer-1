@@ -1,17 +1,12 @@
+import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
 
 export default async function Page() {
-    const hasSupabase = !!process.env.NEXT_PUBLIC_SUPABASE_URL
+    const { userId } = await auth()
 
-    if (!hasSupabase) {
-        redirect('/login')
+    if (userId) {
+        redirect('/studio')
+    } else {
+        redirect('/sign-in')
     }
-
-    const supabase = await createClient()
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
-
-    redirect(user ? '/studio' : '/login')
 }

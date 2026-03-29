@@ -23,17 +23,13 @@
             "logic.html",
             "tsconfig.tsbuildinfo",
             ".env.local",
-            "migrations/**",
-            "_backup_files/**",
-            "docs/**",
-            "public/demo/**",
             "video_renderer_instructions.md",
             "components.json",
-            "worker/**",
             "components/ui/**",
+            "_backup_files/**",
+            "public/demo/**",
             "postcss.config.mjs",
-            "next-env.d.ts",
-            "hooks/**"
+            "next-env.d.ts"
         ]
     }
 }

@@ -10,10 +10,10 @@ import type { SongConfig, Anchor, BeatAnchor } from '@/lib/types'
 
 // ─── Supabase Client (Service Role) ──────────────────────────────
 
-function getSupabase(): SupabaseClient {
+function getSupabase() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_KEY || ''
-    return createClient(url, key)
+    return createClient(url, key, { db: { schema: 'composer' } })
 }
 
 // ─── R2 Client ───────────────────────────────────────────────────

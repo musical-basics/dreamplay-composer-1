@@ -10,20 +10,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { getVideoExportQueue } from '@/lib/queue'
 import { wakeRailwayWorker } from '@/lib/railway'
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@clerk/nextjs/server'
 import type { RenderJobPayload } from '@/lib/types/renderJob'
 
 const supabase = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { db: { schema: 'composer' } }
 )
 
 export async function POST(req: NextRequest) {
   try {
-    const authClient = await createClient()
-    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    const { userId } = await auth()
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       .from('configurations')
       .select('id, user_id, audio_url')
       .eq('id', configId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (configError || !config) {
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       .from('video_exports')
       .insert({
         config_id: configId,
-        user_id: user.id,
+        user_id: userId,
         status: 'queued',
         progress: 0,
       })
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
       { jobId: row.id }
     )
 
-    console.log(`[Export API] Job queued: exportId=${row.id}, configId=${configId}`)
+    console.log(`[Export API] Job queued: exportId=${row.id}, configId=${configId}, userId=${userId}`)
 
     // Wake the Railway worker (it may be shut down to save Redis commands)
     await wakeRailwayWorker()
@@ -119,17 +119,16 @@ export async function POST(req: NextRequest) {
  */
 export async function DELETE() {
   try {
-    const authClient = await createClient()
-    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    const { userId } = await auth()
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { data: ownedConfigs, error: configsError } = await supabase
       .from('configurations')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
 
     if (configsError) {
       console.error('[Export API] Failed to load owned configurations:', configsError)
@@ -174,7 +173,7 @@ export async function DELETE() {
         })
       )
 
-      console.log(`[Export API] Cancelled ${activeJobs.length} active jobs for user ${user.id}`)
+      console.log(`[Export API] Cancelled ${activeJobs.length} active jobs for user ${userId}`)
     }
 
     return NextResponse.json({ status: 'cancelled', jobsCancelled: activeJobs?.length || 0 })
