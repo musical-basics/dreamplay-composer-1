@@ -13,6 +13,22 @@ import { MidiTimeline } from '@/components/score/MidiTimeline'
 import { ScoreControls } from '@/components/score/ScoreControls'
 import { useAppStore } from '@/lib/store'
 import { UploadWizard } from '@/components/studio/UploadWizard'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu'
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useMusicFont } from '@/hooks/useMusicFont'
 import { getPlaybackManager } from '@/lib/engine/PlaybackManager'
 import { parseMidiFile } from '@/lib/midi/parser'
@@ -72,9 +88,13 @@ export default function AdminEditor() {
     const duration = useAppStore((s) => s.duration)
     const loadMidi = useAppStore((s) => s.loadMidi)
     const showMidiTimeline = useAppStore((s) => s.showMidiTimeline)
+    const setShowMidiTimeline = useAppStore((s) => s.setShowMidiTimeline)
     const showWaveformTimeline = useAppStore((s) => s.showWaveformTimeline)
+    const setShowWaveformTimeline = useAppStore((s) => s.setShowWaveformTimeline)
     const showAnchorSidebar = useAppStore((s) => s.showAnchorSidebar)
+    const setShowAnchorSidebar = useAppStore((s) => s.setShowAnchorSidebar)
     const showWaterfall = useAppStore((s) => s.showWaterfall)
+    const setShowWaterfall = useAppStore((s) => s.setShowWaterfall)
 
     const audioInputRef = useRef<HTMLInputElement>(null)
     const xmlInputRef = useRef<HTMLInputElement>(null)
@@ -587,15 +607,65 @@ export default function AdminEditor() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <Button variant="outline" size="sm" onClick={() => audioInputRef.current?.click()} className={`text-xs ${config?.audio_url ? 'border-green-600 text-green-400' : 'border-zinc-700 text-zinc-400'}`}>
-                                <FileAudio className="w-3.5 h-3.5 mr-1" /> WAV
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => xmlInputRef.current?.click()} className={`text-xs ${config?.xml_url ? 'border-green-600 text-green-400' : 'border-zinc-700 text-zinc-400'}`}>
-                                <FileMusic className="w-3.5 h-3.5 mr-1" /> XML
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => midiInputRef.current?.click()} className={`text-xs ${config?.midi_url ? 'border-green-600 text-green-400' : 'border-zinc-700 text-zinc-400'}`}>
-                                <Music className="w-3.5 h-3.5 mr-1" /> MIDI
-                            </Button>
+                            {/* Manage Files Dropdown */}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400 hover:text-white h-8">
+                                        <FolderOpen className="w-3.5 h-3.5 mr-1" /> Files
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56 bg-zinc-900 border-zinc-800 text-zinc-300">
+                                    <DropdownMenuLabel>Source Files</DropdownMenuLabel>
+                                    <DropdownMenuSeparator className="bg-zinc-800" />
+                                    <DropdownMenuItem onClick={() => audioInputRef.current?.click()} className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <FileAudio className="w-4 h-4 mr-2 text-purple-400" /> Audio (WAV)
+                                        </div>
+                                        {config?.audio_url && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => xmlInputRef.current?.click()} className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <FileMusic className="w-4 h-4 mr-2 text-blue-400" /> Score (XML)
+                                        </div>
+                                        {config?.xml_url && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => midiInputRef.current?.click()} className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <Music className="w-4 h-4 mr-2 text-amber-400" /> Performance (MIDI)
+                                        </div>
+                                        {config?.midi_url && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator className="bg-zinc-800" />
+                                    <DropdownMenuItem onClick={() => router.push('/studio')} className="text-zinc-400">
+                                        Back to Dashboard
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* View Dropdown */}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400 hover:text-white h-8">
+                                        Settings
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56 bg-zinc-900 border-zinc-800 text-zinc-300">
+                                    <DropdownMenuLabel>Interface Views</DropdownMenuLabel>
+                                    <DropdownMenuSeparator className="bg-zinc-800" />
+                                    <DropdownMenuCheckboxItem checked={showAnchorSidebar} onCheckedChange={setShowAnchorSidebar}>
+                                        Anchor Sidebar
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem checked={showMidiTimeline} onCheckedChange={setShowMidiTimeline}>
+                                        MIDI Piano Roll
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem checked={showWaveformTimeline} onCheckedChange={setShowWaveformTimeline}>
+                                        Waveform Monitor
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem checked={showWaterfall} onCheckedChange={setShowWaterfall}>
+                                        Waterfall Display
+                                    </DropdownMenuCheckboxItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
 
                             <div className="w-px h-6 bg-zinc-700 mx-1" />
 
@@ -635,48 +705,60 @@ export default function AdminEditor() {
 
                             <div className="w-px h-6 bg-zinc-700 mx-1" />
 
-                            <Button size="sm" onClick={toggleRecordMode} className={`text-white ${isRecording ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'}`}>
+                            <Button size="sm" onClick={toggleRecordMode} className={`text-white min-w-[100px] ${isRecording ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'}`}>
                                 ⏺ {isRecording ? `Rec (M${nextMeasure})` : 'Record'}
                             </Button>
                         </div>
                     </div>
 
-                    {/* Row 2: Font, ScoreControls, Save */}
-                    <div className="flex items-center justify-start px-4 py-1.5 border-t border-zinc-800/50">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowAdvanced(!showAdvanced)}
-                            className="text-zinc-400 hover:text-white h-7 px-2"
-                        >
-                            <Settings className="w-3.5 h-3.5 mr-1" /> {showAdvanced ? 'Hide Advanced Settings' : 'Advanced Settings'}
-                        </Button>
-
-                        {showAdvanced && (
-                            <div className="flex items-center gap-2 ml-4">
-                                <select
-                                    value={musicFont}
-                                    onChange={(e) => setFont(e.target.value)}
-                                    className="text-xs px-2 py-1.5 rounded border bg-zinc-800 border-zinc-600 text-zinc-300 cursor-pointer hover:border-zinc-500"
+                    {/* Row 2: Advanced Settings (Collapsible) */}
+                    <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+                        <div className="flex items-center justify-start px-4 h-8 border-t border-zinc-800/50">
+                            <CollapsibleTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-zinc-500 hover:text-white h-6 px-1 text-[10px] uppercase tracking-wider font-semibold"
                                 >
-                                    <option value="Bravura">♪ Bravura</option>
-                                    <option value="Gonville">♪ Gonville</option>
-                                    <option value="Petaluma">♪ Petaluma</option>
-                                    <option value="Academico">♪ Academico</option>
-                                </select>
+                                    <Settings className={`w-3 h-3 mr-1.5 transition-transform duration-200 ${showAdvanced ? 'rotate-90' : ''}`} />
+                                    {showAdvanced ? 'Hide Advanced Config' : 'Show Advanced Config'}
+                                </Button>
+                            </CollapsibleTrigger>
+                        </div>
 
-                                <ScoreControls
-                                    revealMode={revealMode} darkMode={darkMode} highlightNote={highlightNote}
-                                    glowEffect={glowEffect} popEffect={popEffect} jumpEffect={jumpEffect}
-                                    isLocked={isLocked} showCursor={showCursor} isAdmin={true}
-                                    onRevealModeChange={setRevealMode} onDarkModeToggle={() => setDarkMode(!darkMode)}
-                                    onHighlightToggle={() => setHighlightNote(!highlightNote)} onGlowToggle={() => setGlowEffect(!glowEffect)}
-                                    onPopToggle={() => setPopEffect(!popEffect)} onJumpToggle={() => setJumpEffect(!jumpEffect)}
-                                    onLockToggle={() => setIsLocked(!isLocked)} onCursorToggle={() => setShowCursor(!showCursor)}
-                                />
+                        <CollapsibleContent>
+                            <div className="flex items-center gap-6 px-4 py-3 bg-zinc-900/50 border-t border-zinc-800/30">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label className="text-[10px] text-zinc-500 uppercase font-bold">Score Font</Label>
+                                    <select
+                                        value={musicFont}
+                                        onChange={(e) => setFont(e.target.value)}
+                                        className="text-xs px-2 py-1 rounded border bg-zinc-800 border-zinc-700 text-zinc-300 cursor-pointer hover:border-zinc-600 focus:outline-none min-w-[120px]"
+                                    >
+                                        <option value="Bravura">♪ Bravura</option>
+                                        <option value="Gonville">♪ Gonville</option>
+                                        <option value="Petaluma">♪ Petaluma</option>
+                                        <option value="Academico">♪ Academico</option>
+                                    </select>
+                                </div>
+
+                                <div className="h-12 w-px bg-zinc-800" />
+
+                                <div className="flex flex-col gap-1.5 flex-1">
+                                    <Label className="text-[10px] text-zinc-500 uppercase font-bold">Visual Appearance</Label>
+                                    <ScoreControls
+                                        revealMode={revealMode} darkMode={darkMode} highlightNote={highlightNote}
+                                        glowEffect={glowEffect} popEffect={popEffect} jumpEffect={jumpEffect}
+                                        isLocked={isLocked} showCursor={showCursor} isAdmin={true}
+                                        onRevealModeChange={setRevealMode} onDarkModeToggle={() => setDarkMode(!darkMode)}
+                                        onHighlightToggle={() => setHighlightNote(!highlightNote)} onGlowToggle={() => setGlowEffect(!glowEffect)}
+                                        onPopToggle={() => setPopEffect(!popEffect)} onJumpToggle={() => setJumpEffect(!jumpEffect)}
+                                        onLockToggle={() => setIsLocked(!isLocked)} onCursorToggle={() => setShowCursor(!showCursor)}
+                                    />
+                                </div>
                             </div>
-                        )}
-                    </div>
+                        </CollapsibleContent>
+                    </Collapsible>
                 </div>
 
                 <div className="flex-1 overflow-hidden">

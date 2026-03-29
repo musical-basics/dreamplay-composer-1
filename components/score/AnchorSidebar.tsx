@@ -2,8 +2,16 @@
 
 import * as React from 'react'
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, ChevronDown, Wand2, Layers, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import type { Anchor, BeatAnchor, V5MapperState } from '@/lib/types'
 
 interface AnchorSidebarProps {
@@ -136,65 +144,100 @@ export const AnchorSidebar: React.FC<AnchorSidebarProps> = ({
                 </span>
             </div>
 
-            <div className={`p-3 border-b ${border} space-y-2`}>
-                <label className="flex items-center gap-2 text-xs">
-                    <input
-                        type="checkbox"
-                        checked={isLevel2Mode}
-                        onChange={(e) => onToggleLevel2(e.target.checked)}
-                        className="rounded"
-                    />
-                    Beat-level mapping (L2)
-                </label>
-                {isLevel2Mode && (
-                    <div className="space-y-2">
+            <Accordion type="single" collapsible className="border-b border-zinc-800">
+                <AccordionItem value="advanced" className="border-none">
+                    <AccordionTrigger className="px-3 py-2 text-[10px] uppercase font-bold text-zinc-500 hover:no-underline hover:text-zinc-300">
                         <div className="flex items-center gap-2">
-                            <span className="text-xs">Subdivision:</span>
-                            <select
-                                value={subdivision}
-                                onChange={(e) => onSetSubdivision(Number(e.target.value))}
-                                className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-100 border-zinc-300'} border`}
-                            >
-                                {[2, 3, 4, 6, 8, 12, 16].map((n) => (
-                                    <option key={n} value={n}>{n}</option>
-                                ))}
-                            </select>
+                            <Settings2 className="w-3 h-3" />
+                            Advanced Mapping Tools
                         </div>
-                        {onRegenerateBeats && (
-                            <button
-                                onClick={onRegenerateBeats}
-                                className={`w-full text-xs font-bold py-1.5 rounded border transition-colors shadow-sm ${darkMode
-                                    ? 'bg-emerald-900/40 border-emerald-700 text-emerald-400 hover:bg-emerald-800 hover:text-white'
-                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-                                    }`}
+                    </AccordionTrigger>
+                    <AccordionContent className="px-3 pb-4 space-y-4">
+                        {/* L2 Toggle */}
+                        <div className="flex items-center space-x-2 bg-zinc-800/30 p-2 rounded-lg border border-zinc-800/50">
+                            <Checkbox
+                                id="l2-mode"
+                                checked={isLevel2Mode}
+                                onCheckedChange={(checked) => onToggleLevel2(!!checked)}
+                            />
+                            <Label
+                                htmlFor="l2-mode"
+                                className="text-xs font-medium leading-none cursor-pointer text-zinc-300"
                             >
-                                {beatAnchors.length > 0 ? '↻ Regenerate Beats' : '▶ Generate Beats'}
-                            </button>
+                                Beat-level mapping (L2)
+                            </Label>
+                        </div>
+
+                        {isLevel2Mode && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="flex items-center justify-between gap-2 px-1">
+                                    <span className="text-[10px] uppercase font-bold text-zinc-500">Subdivision</span>
+                                    <select
+                                        value={subdivision}
+                                        onChange={(e) => onSetSubdivision(Number(e.target.value))}
+                                        className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-zinc-100 border-zinc-300'} border focus:outline-none focus:ring-1 focus:ring-purple-500/50`}
+                                    >
+                                        {[2, 3, 4, 6, 8, 12, 16].map((n) => (
+                                            <option key={n} value={n}>{n}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {onRegenerateBeats && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={onRegenerateBeats}
+                                        className="w-full text-[10px] font-bold h-8 border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10"
+                                    >
+                                        <Layers className="w-3 h-3 mr-1.5" />
+                                        {beatAnchors.length > 0 ? '↻ Regenerate Beats' : '▶ Generate Beats'}
+                                    </Button>
+                                )}
+                            </div>
                         )}
-                    </div>
-                )}
-            </div>
+
+                        <div className="h-px bg-zinc-800 my-2" />
+
+                        <V5Controls
+                            darkMode={darkMode}
+                            border={border}
+                            currentMeasure={currentMeasure}
+                            isAiMapping={isAiMapping}
+                            v5State={v5State}
+                            onClearAll={onClearAll}
+                            onTap={onTap}
+                            onAutoMap={onAutoMap}
+                            onAutoMapV4={onAutoMapV4}
+                            onAutoMapV5={onAutoMapV5}
+                            onConfirmGhost={onConfirmGhost}
+                            onProceedMapping={onProceedMapping}
+                            onRunV5ToEnd={onRunV5ToEnd}
+                            onUpdateGhostTime={onUpdateGhostTime}
+                        />
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
 
             <div className="flex-1 overflow-y-auto p-2">
                 {rows}
             </div>
 
-            <V5Controls
-                darkMode={darkMode}
-                border={border}
-                currentMeasure={currentMeasure}
-                isAiMapping={isAiMapping}
-                v5State={v5State}
-                onClearAll={onClearAll}
-                onTap={onTap}
-                onAutoMap={onAutoMap}
-                onAutoMapV4={onAutoMapV4}
-                onAutoMapV5={onAutoMapV5}
-                onConfirmGhost={onConfirmGhost}
-                onProceedMapping={onProceedMapping}
-                onRunV5ToEnd={onRunV5ToEnd}
-                onUpdateGhostTime={onUpdateGhostTime}
-            />
+            <div className={`p-3 border-t border-zinc-800 bg-zinc-900/50 flex flex-col gap-2 shrink-0`}>
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-zinc-500">Quick Actions</span>
+                    <span className="text-[10px] font-mono text-zinc-400">M{currentMeasure}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" onClick={onClearAll}
+                        className="text-[10px] font-bold h-8 border-zinc-700 hover:bg-zinc-800 text-zinc-400">
+                        Clear All
+                    </Button>
+                    <Button size="sm" onClick={onTap}
+                        className="bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold h-8 shadow-lg shadow-purple-500/20">
+                        TAP (A)
+                    </Button>
+                </div>
+            </div>
         </div>
     )
 }
@@ -234,128 +277,123 @@ const V5Controls: React.FC<V5ControlsProps> = ({
     }
 
     return (
-        <div className={`p-3 border-t ${border} flex flex-col gap-3`}>
-            <div className="text-center">
-                <span className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    Current: Measure {currentMeasure}
-                </span>
-            </div>
-
+        <div className="flex flex-col gap-4">
             {/* Version Selector */}
             <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium ${darkMode ? 'text-zinc-300' : 'text-zinc-600'}`}>Mapping:</span>
+                <div className="flex flex-col gap-1.5">
+                    <Label className="text-[10px] uppercase font-bold text-zinc-500">Mapping Strategy</Label>
                     <select
                         value={selectedVersion}
                         onChange={(e) => setSelectedVersion(e.target.value as 'v3' | 'v4' | 'v5')}
                         disabled={isAiMapping || !!isV5Active}
-                        className={`flex-1 text-xs px-2 py-1 rounded ${darkMode ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-zinc-100 border-zinc-300 text-zinc-800'
-                            } border disabled:opacity-50`}
+                        className={`w-full text-xs px-2 py-1.5 rounded ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-zinc-100 border-zinc-200'
+                            } border focus:outline-none focus:ring-1 focus:ring-purple-500/50 disabled:opacity-50`}
                     >
-                        <option value="v3">V3 — AI + Heuristic</option>
-                        <option value="v4">V4 — Note-by-Note</option>
+                        <option value="v3">V3 — Heuristic + Gemini</option>
+                        <option value="v4">V4 — Frame-Sync</option>
                         <option value="v5">V5 — Echolocation</option>
                     </select>
                 </div>
 
-                {/* V5 Chord Threshold Config */}
                 {selectedVersion === 'v5' && !isV5Active && (
-                    <div className="flex items-center gap-2">
-                        <span className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Chord Threshold:</span>
+                    <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <Label className="text-[10px] uppercase font-bold text-zinc-500">Chord Threshold</Label>
                         <select
                             value={chordThreshold}
                             onChange={(e) => setChordThreshold(Number(e.target.value))}
-                            className={`flex-1 text-xs px-2 py-1 rounded ${darkMode ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-zinc-100 border-zinc-300'
-                                } border`}
+                            className={`w-full text-xs px-2 py-1.5 rounded ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-zinc-100 border-zinc-200'
+                                } border focus:outline-none focus:ring-1 focus:ring-purple-500/50`}
                         >
-                            <option value={0.0625}>64th note (tightest)</option>
+                            <option value={0.0625}>64th note (Strict)</option>
                             <option value={0.125}>32nd note</option>
-                            <option value={0.25}>16th note (loosest)</option>
+                            <option value={0.25}>16th note (Loose)</option>
                         </select>
                     </div>
                 )}
             </div>
 
+            {/* AI Control Button */}
+            <Button
+                size="sm"
+                onClick={handleRunAutoMap}
+                disabled={isAiMapping || !!isV5Active}
+                className={`w-full text-[11px] font-bold h-9 transition-all disabled:opacity-50 ${selectedVersion === 'v5'
+                        ? 'bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 text-white'
+                        : selectedVersion === 'v4'
+                            ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20 text-white'
+                            : 'bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20 text-white'
+                    }`}
+            >
+                {isAiMapping
+                    ? 'Processing...'
+                    : (
+                        <div className="flex items-center gap-2">
+                            <Wand2 className="w-3.5 h-3.5" />
+                            {selectedVersion === 'v5' ? 'Start Echolocation'
+                                : selectedVersion === 'v4' ? 'Start Frame-Sync'
+                                    : 'Start AI Mapping'}
+                        </div>
+                    )
+                }
+            </Button>
+
             {/* V5 Paused State: Ghost Anchor Controls */}
             {v5State?.status === 'paused' && v5State.ghostAnchor && (
-                <div className={`space-y-2 p-2 rounded border border-dashed ${darkMode ? 'border-orange-600 bg-orange-900/20' : 'border-orange-300 bg-orange-50'
-                    }`}>
-                    <div className={`text-xs font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                        ⚠ No match at M{v5State.ghostAnchor.measure} B{v5State.ghostAnchor.beat}
+                <div className="space-y-3 p-3 rounded-lg border border-orange-500/30 bg-orange-500/5 animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-orange-400 uppercase">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                        </span>
+                        Manual Intervention Required
                     </div>
-                    <div className="flex items-center gap-1">
-                        <span className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Ghost:</span>
+                    
+                    <div className="flex flex-col gap-1.5">
+                        <Label className="text-[10px] text-orange-500/70 font-bold uppercase">M{v5State.ghostAnchor.measure} B{v5State.ghostAnchor.beat} Time (s)</Label>
                         <input
                             type="number"
-                            step="0.01"
+                            step="0.001"
                             value={v5State.ghostAnchor.time.toFixed(3)}
                             onChange={(e) => onUpdateGhostTime?.(parseFloat(e.target.value) || 0)}
-                            className={`flex-1 px-2 py-1 rounded font-mono text-xs border ${darkMode ? 'bg-zinc-800 border-orange-600 text-orange-400' : 'bg-orange-50 border-orange-300 text-orange-700'
-                                }`}
+                            className="w-full px-2 py-1.5 rounded font-mono text-xs border bg-zinc-900 border-orange-500/50 text-orange-400 focus:outline-none"
                         />
-                        <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>s</span>
                     </div>
+
                     <div className="flex gap-2">
                         <Button size="sm" onClick={onConfirmGhost}
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs h-7">
-                            ✓ Confirm
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold h-7">
+                            Confirm
                         </Button>
                         <Button size="sm" onClick={onProceedMapping}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs h-7">
-                            ▶ Proceed
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold h-7">
+                            Skip
                         </Button>
                     </div>
-                    <Button size="sm" variant="outline" onClick={onRunV5ToEnd}
-                        className={`w-full text-xs h-7 ${darkMode ? 'border-zinc-600 text-zinc-300' : ''}`}>
-                        ⏩ Run to End (auto-confirm all)
+                    <Button variant="ghost" size="sm" onClick={onRunV5ToEnd}
+                        className="w-full text-[10px] font-bold h-7 text-zinc-500 hover:text-white hover:bg-zinc-800">
+                        Auto-confirm to end
                     </Button>
                 </div>
             )}
 
-            {/* V5 Running State */}
-            {v5State?.status === 'running' && (
-                <div className={`text-center text-xs py-2 rounded ${darkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
-                    }`}>
-                    ⏳ Mapping... Event {v5State.currentEventIndex} | AQNTL {(60 / v5State.aqntl).toFixed(0)} BPM
+            {/* V5 Running/Done Info */}
+            {(v5State?.status === 'running' || v5State?.status === 'done') && (
+                <div className={`text-center py-2 px-3 rounded-lg border animate-in fade-in duration-300 ${
+                    v5State.status === 'done' 
+                        ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                }`}>
+                    <div className="text-[10px] font-bold uppercase tracking-tight">
+                        {v5State.status === 'done' ? 'Mapping Complete' : 'Calculating Local Tempo...'}
+                    </div>
+                    <div className="text-[9px] opacity-70 mt-0.5">
+                        {v5State.status === 'done' 
+                            ? `${v5State.anchors.length} anchors | ${v5State.beatAnchors.length} beats`
+                            : `Event ${v5State.currentEventIndex} | BPM: ${(60 / v5State.aqntl).toFixed(0)}`
+                        }
+                    </div>
                 </div>
             )}
-
-            {/* V5 Done State */}
-            {v5State?.status === 'done' && (
-                <div className={`text-center text-xs py-2 rounded ${darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-600'
-                    }`}>
-                    ✓ V5 Complete — {v5State.anchors.length} anchors, {v5State.beatAnchors.length} beats
-                </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" onClick={onClearAll}
-                    className={`text-xs h-8 ${darkMode ? 'border-zinc-700 hover:bg-zinc-800 text-zinc-300' : ''}`}>
-                    Clear All
-                </Button>
-                <Button size="sm" onClick={onTap}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 shadow-lg shadow-purple-500/20">
-                    TAP (A)
-                </Button>
-                <Button
-                    size="sm"
-                    onClick={handleRunAutoMap}
-                    disabled={isAiMapping || !!isV5Active}
-                    className={`col-span-2 text-white text-xs h-8 transition-all disabled:opacity-50 ${selectedVersion === 'v5'
-                            ? 'bg-amber-600 hover:bg-amber-700 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
-                            : selectedVersion === 'v4'
-                                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
-                                : 'bg-indigo-600 hover:bg-indigo-700 shadow-[0_0_10px_rgba(79,70,229,0.3)]'
-                        }`}
-                >
-                    {isAiMapping
-                        ? '⏱️ Processing...'
-                        : selectedVersion === 'v5' ? '🔊 Run Echolocation (V5)'
-                            : selectedVersion === 'v4' ? '🎯 Run Note-by-Note (V4)'
-                                : '✨ Run AI Auto-Map (V3)'
-                    }
-                </Button>
-            </div>
         </div>
     )
 }
