@@ -283,7 +283,6 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                     )
                     // window = 4 notes wide, clamped to [0.25, 2]
                     const beamGroupBeats = Math.min(Math.max(4 * (isFinite(minDurBeats) ? minDurBeats : 0.5), 0.25), 2)
-                    if (mIdx === 0) console.log(`[BEAM] M1 staff${staff.staffIndex} voice${voice.voiceIndex}: minDurBeats=${minDurBeats} beamGroupBeats=${beamGroupBeats} beamable=${beamableNotesList.length} durations=${beamableNotesList.slice(0,4).map(n=>n.duration).join(',')} beats=${beamableNotesList.slice(0,6).map(n=>n.beat.toFixed(2)).join(',')}`)
 
                     // Track beamable notes with their beat position so we can split at beat boundaries.
                     const beamableWithBeat: Array<{ note: StaveNote; beatFloor: number }> = []
@@ -468,25 +467,23 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                     if (isMultiVoice) multiVoiceVoices.add(vfVoice)
 
                     // ── Beat-aware beaming ──
-                    // Group beamable notes by which quarter beat they start on, then beam each group
-                    // separately. This guarantees beams never cross beat boundaries in any time signature.
+                    // We pre-bucket notes by beam group window, then create ONE Beam per bucket.
+                    // Using new Beam() directly (not generateBeams) prevents VexFlow from
+                    // re-splitting our carefully pre-grouped buckets with its own heuristics.
                     if (beamableWithBeat.length >= 2) {
                         try {
-                            // Bucket notes by beat floor
+                            // Bucket notes by beam-group floor
                             const beatBuckets = new Map<number, StaveNote[]>()
                             for (const { note: sn, beatFloor } of beamableWithBeat) {
                                 if (!beatBuckets.has(beatFloor)) beatBuckets.set(beatFloor, [])
                                 beatBuckets.get(beatFloor)!.push(sn)
                             }
-                            // Beam each bucket individually
+                            // One Beam per bucket — all notes in the bucket beam together
                             for (const [, groupNotes] of beatBuckets) {
                                 if (groupNotes.length < 2) continue
-                                const beamOpts: any = {}
-                                if (stemDir !== undefined) {
-                                    beamOpts.stemDirection = stemDir
-                                    beamOpts.maintainStemDirections = true
-                                }
-                                measureBeams.push(...Beam.generateBeams(groupNotes, beamOpts))
+                                // new Beam(notes, autoStem) beams all notes unconditionally.
+                                // autoStem=false: notes already have stemDir set from voice assignment.
+                                measureBeams.push(new Beam(groupNotes, false))
                             }
                         } catch { /* ignore */ }
                     }
@@ -761,28 +758,10 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
 
     }, [score, onRenderComplete, fontsLoaded, musicFont])
 
-    // Render when score changes.
-    // After the first render, force a second render pass after a short delay.
-    // The browser registers the font as "loaded" but glyph shaping for SMuFL
-    // Private Use Area characters isn't complete until a subsequent layout pass.
-    // We suppress visibility (via fontSettled) until the re-render is done.
-    const [fontSettled, setFontSettled] = useState(false)
-    const hasInitialRenderedRef = useRef(false)
+    // Render when score changes
     useEffect(() => {
         renderScore()
-        if (!hasInitialRenderedRef.current && fontsLoaded && score) {
-            hasInitialRenderedRef.current = true
-            const timer = setTimeout(() => {
-                console.log('[FONT DEBUG] Forcing post-initial re-render for glyph shaping')
-                renderScore()
-                setFontSettled(true)
-            }, 300)
-            return () => clearTimeout(timer)
-        } else if (hasInitialRenderedRef.current) {
-            // Subsequent renders (font change, resize, etc.) — already settled
-            setFontSettled(true)
-        }
-    }, [renderScore, fontsLoaded, score])
+    }, [renderScore])
 
     // Handle resize
     useEffect(() => {
@@ -798,7 +777,7 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
             style={{
                 minWidth: '100%',
                 minHeight: `${SYSTEM_HEIGHT}px`,
-                opacity: (isRendered && fontSettled) ? 1 : 0,
+                opacity: isRendered ? 1 : 0,
                 transition: 'opacity 0.2s',
             }}
         />
