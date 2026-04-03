@@ -6,6 +6,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import { promises as fs } from 'fs'
+import path from 'path'
 
 export type AuditFinding = {
     id: string
@@ -176,4 +178,61 @@ export async function runScoreAudit(
         summary: parsed.summary,
         modelUsed: modelId,
     }
+}
+
+// ─── Local Reference Storage ───────────────────────────────────────
+// Saves reference images to docs/audit-references/<configId>/
+// so they persist across sessions and are accessible to IDE AI tools.
+
+const REFS_DIR = path.join(process.cwd(), 'docs', 'audit-references')
+
+function getRefPath(configId: string, measureNum: number): string {
+    return path.join(REFS_DIR, configId, `m${measureNum}.png`)
+}
+
+export async function saveReferenceImage(
+    configId: string,
+    measureNum: number,
+    base64DataUrl: string,
+): Promise<void> {
+    const dir = path.join(REFS_DIR, configId)
+    await fs.mkdir(dir, { recursive: true })
+
+    // Strip data URL prefix → raw base64
+    const raw = base64DataUrl.replace(/^data:image\/[^;]+;base64,/, '')
+    await fs.writeFile(getRefPath(configId, measureNum), raw, 'base64')
+}
+
+export async function loadReferenceImage(
+    configId: string,
+    measureNum: number,
+): Promise<string | null> {
+    const filePath = getRefPath(configId, measureNum)
+    try {
+        const data = await fs.readFile(filePath)
+        return `data:image/png;base64,${data.toString('base64')}`
+    } catch {
+        return null
+    }
+}
+
+export async function loadAllReferenceImages(
+    configId: string,
+): Promise<Map<number, string>> {
+    const dir = path.join(REFS_DIR, configId)
+    const map = new Map<number, string>()
+    try {
+        const files = await fs.readdir(dir)
+        for (const file of files) {
+            const match = file.match(/^m(\d+)\.png$/)
+            if (match) {
+                const measureNum = parseInt(match[1])
+                const data = await fs.readFile(path.join(dir, file))
+                map.set(measureNum, `data:image/png;base64,${data.toString('base64')}`)
+            }
+        }
+    } catch {
+        // Directory doesn't exist yet
+    }
+    return map
 }

@@ -37,6 +37,9 @@ repomix-output.*
 *repomix*.xml
 !repomix.config.json
 
+# audit reference images (local only, not committed)
+docs/audit-references/
+
 # working source files (originals in repo root — NOT the demo copies)
 *.wav
 *.musicxml

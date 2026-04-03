@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button'
 import { parseMusicXml } from '@/lib/score/MusicXmlParser'
 import type { IntermediateScore, IntermediateMeasure } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
+import { captureMeasure } from '@/components/score/measureCropper'
 import { fetchConfigById } from '@/app/actions/config'
-import { runScoreAudit, fetchAvailableModels, type AuditResult } from '@/app/actions/scoreAudit'
+import { runScoreAudit, fetchAvailableModels, saveReferenceImage, loadAllReferenceImages, type AuditResult } from '@/app/actions/scoreAudit'
 import type { SongConfig } from '@/lib/types'
 
 type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
@@ -123,35 +124,39 @@ export default function ScoreAuditPage() {
         })
     }, [])
 
+    // Load saved reference images from local filesystem
+    useEffect(() => {
+        if (!configId) return
+        loadAllReferenceImages(configId).then(saved => {
+            if (saved.size > 0) {
+                setReferenceImages(prev => {
+                    const merged = new Map(prev)
+                    saved.forEach((v, k) => { if (!merged.has(k)) merged.set(k, v) })
+                    return merged
+                })
+            }
+        })
+    }, [configId])
+
     // ── Handle render complete ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
         setRenderResult(result)
     }, [])
 
-    // ── Capture a single measure via html2canvas (on-demand, only when auditing) ──
-    const captureMeasure = useCallback(async (measureNum: number): Promise<string | null> => {
+    // ── Capture a single measure by embedding fonts into cloned SVG ──
+    const captureSelectedMeasure = useCallback(async (measureNum: number): Promise<string | null> => {
         const container = vexflowContainerRef.current
         if (!container || !renderResult) return null
+
+        const svgEl = container.querySelector('svg') as SVGSVGElement | null
+        if (!svgEl) return null
 
         const x = renderResult.measureXMap.get(measureNum)
         const w = renderResult.measureWidthMap.get(measureNum)
         if (x === undefined || w === undefined) return null
 
-        const { top, height } = renderResult.systemYMap
-        const padding = 8
-
         try {
-            const { default: html2canvas } = await import('html2canvas-pro')
-            const canvas = await html2canvas(container, {
-                backgroundColor: '#ffffff',
-                scale: 2,
-                x: Math.max(0, x - padding),
-                y: Math.max(0, top - padding),
-                width: w + padding * 2,
-                height: height + padding * 2,
-                useCORS: true,
-            })
-            return canvas.toDataURL('image/png')
+            return await captureMeasure(svgEl, x, w, renderResult.systemYMap)
         } catch (err) {
             console.error('Capture failed:', err)
             return null
@@ -165,11 +170,16 @@ export default function ScoreAuditPage() {
 
         const reader = new FileReader()
         reader.onload = () => {
-            setReferenceImages(prev => new Map(prev).set(selectedMeasure, reader.result as string))
+            const dataUrl = reader.result as string
+            setReferenceImages(prev => new Map(prev).set(selectedMeasure, dataUrl))
+            // Save to local filesystem for persistence + IDE AI access
+            saveReferenceImage(configId, selectedMeasure, dataUrl).catch(err => {
+                console.error('Failed to save reference locally:', err)
+            })
         }
         reader.readAsDataURL(file)
         if (fileInputRef.current) fileInputRef.current.value = ''
-    }, [selectedMeasure])
+    }, [selectedMeasure, configId])
 
     // ── Run audit for selected measure ──
     const handleRunAudit = useCallback(async () => {
@@ -183,7 +193,7 @@ export default function ScoreAuditPage() {
 
         try {
             // Capture just this measure on-demand
-            const rendered = await captureMeasure(selectedMeasure)
+            const rendered = await captureSelectedMeasure(selectedMeasure)
             if (!rendered) throw new Error('Failed to capture measure render')
 
             setCapturing(false)
@@ -203,7 +213,7 @@ export default function ScoreAuditPage() {
             setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pending'))
             setCapturing(false)
         }
-    }, [selectedMeasure, referenceImages, selectedModel, captureMeasure])
+    }, [selectedMeasure, referenceImages, selectedModel, captureSelectedMeasure])
 
     // ── Mark as OK / Skip ──
     const markAsPass = useCallback(() => {
