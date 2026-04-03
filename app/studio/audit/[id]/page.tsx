@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
     ArrowLeft, Upload, Loader2, AlertTriangle, CheckCircle, Info, XCircle,
@@ -9,11 +9,10 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { parseMusicXml } from '@/lib/score/MusicXmlParser'
-import type { IntermediateScore } from '@/lib/score/IntermediateScore'
+import type { IntermediateScore, IntermediateMeasure } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
-import { rasterizeScore, cropMeasure, clearCache } from '@/components/score/measureCropper'
 import { fetchConfigById } from '@/app/actions/config'
-import { runScoreAudit, fetchAvailableModels, type AuditFinding, type AuditResult } from '@/app/actions/scoreAudit'
+import { runScoreAudit, fetchAvailableModels, type AuditResult } from '@/app/actions/scoreAudit'
 import type { SongConfig } from '@/lib/types'
 
 type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
@@ -33,6 +32,8 @@ const STATUS_COLORS: Record<MeasureStatus, string> = {
     skipped: 'border-zinc-200 bg-zinc-100 opacity-60',
 }
 
+const MEASURES_PER_PAGE = 8
+
 export default function ScoreAuditPage() {
     const params = useParams()
     const router = useRouter()
@@ -40,23 +41,26 @@ export default function ScoreAuditPage() {
 
     // Data
     const [config, setConfig] = useState<SongConfig | null>(null)
-    const [score, setScore] = useState<IntermediateScore | null>(null)
+    const [fullScore, setFullScore] = useState<IntermediateScore | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    // Render result from VexFlow
+    // Pagination — render only a slice of measures at a time
+    const [page, setPage] = useState(0)
+
+    // Render result from VexFlow (for the current page's slice)
     const [renderResult, setRenderResult] = useState<VexFlowRenderResult | null>(null)
     const vexflowContainerRef = useRef<HTMLDivElement>(null)
 
-    // Measure block state
+    // Measure block state (keyed by absolute measure number)
     const [selectedMeasure, setSelectedMeasure] = useState<number | null>(null)
     const [measureStatuses, setMeasureStatuses] = useState<Map<number, MeasureStatus>>(new Map())
     const [measureResults, setMeasureResults] = useState<Map<number, AuditResult>>(new Map())
     const [referenceImages, setReferenceImages] = useState<Map<number, string>>(new Map())
-    const [croppedRenders, setCroppedRenders] = useState<Map<number, string>>(new Map())
 
     // Audit state
     const [auditError, setAuditError] = useState<string | null>(null)
+    const [capturing, setCapturing] = useState(false)
 
     // Model selection
     const [models, setModels] = useState<{ id: string; name: string }[]>([])
@@ -65,8 +69,25 @@ export default function ScoreAuditPage() {
     // Expanded findings
     const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set())
 
-    // File input ref (per-measure)
+    // File input ref
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const measureCount = fullScore?.measures.length ?? 0
+    const totalPages = Math.ceil(measureCount / MEASURES_PER_PAGE)
+
+    // Paginated score slice (creates a new IntermediateScore with just the visible measures)
+    const paginatedScore = useMemo<IntermediateScore | null>(() => {
+        if (!fullScore) return null
+        const start = page * MEASURES_PER_PAGE
+        const end = Math.min(start + MEASURES_PER_PAGE, fullScore.measures.length)
+        return {
+            title: fullScore.title,
+            measures: fullScore.measures.slice(start, end),
+        }
+    }, [fullScore, page])
+
+    // Map from paginated measure index to absolute measure number
+    const pageStartMeasure = page * MEASURES_PER_PAGE + 1
 
     // ── Load config + parse score ──
     useEffect(() => {
@@ -77,7 +98,7 @@ export default function ScoreAuditPage() {
                 setConfig(cfg)
                 if (cfg.xml_url) {
                     const parsed = await parseMusicXml(cfg.xml_url)
-                    setScore(parsed)
+                    setFullScore(parsed)
                 }
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'Failed to load')
@@ -98,46 +119,40 @@ export default function ScoreAuditPage() {
         })
     }, [])
 
-    // Full-score rasterized canvas (for per-measure cropping)
-    const [scoreRasterized, setScoreRasterized] = useState(false)
-
-    // ── Handle render complete — rasterize full score once ──
+    // ── Handle render complete ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
         setRenderResult(result)
-        // Clear old crops + raster cache when score re-renders
-        clearCache()
-        setCroppedRenders(new Map())
-        setScoreRasterized(false)
-
-        // Rasterize after a short delay to ensure fonts are settled
-        const container = vexflowContainerRef.current
-        if (container) {
-            setTimeout(() => {
-                rasterizeScore(container).then(() => {
-                    setScoreRasterized(true)
-                }).catch(err => {
-                    console.error('Score rasterization failed:', err)
-                })
-            }, 500)
-        }
     }, [])
 
-    // ── Auto-crop when a measure is selected (from rasterized canvas) ──
-    useEffect(() => {
-        if (!selectedMeasure || !renderResult || !scoreRasterized) return
-        if (croppedRenders.has(selectedMeasure)) return
+    // ── Capture a single measure via html2canvas (on-demand, only when auditing) ──
+    const captureMeasure = useCallback(async (measureNum: number): Promise<string | null> => {
+        const container = vexflowContainerRef.current
+        if (!container || !renderResult) return null
 
-        const x = renderResult.measureXMap.get(selectedMeasure)
-        const w = renderResult.measureWidthMap.get(selectedMeasure)
-        if (x === undefined || w === undefined) return
+        const x = renderResult.measureXMap.get(measureNum)
+        const w = renderResult.measureWidthMap.get(measureNum)
+        if (x === undefined || w === undefined) return null
+
+        const { top, height } = renderResult.systemYMap
+        const padding = 8
 
         try {
-            const png = cropMeasure(x, w, renderResult.systemYMap)
-            setCroppedRenders(prev => new Map(prev).set(selectedMeasure, png))
+            const { default: html2canvas } = await import('html2canvas-pro')
+            const canvas = await html2canvas(container, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                x: Math.max(0, x - padding),
+                y: Math.max(0, top - padding),
+                width: w + padding * 2,
+                height: height + padding * 2,
+                useCORS: true,
+            })
+            return canvas.toDataURL('image/png')
         } catch (err) {
-            console.error('Crop failed:', err)
+            console.error('Capture failed:', err)
+            return null
         }
-    }, [selectedMeasure, renderResult, scoreRasterized, croppedRenders])
+    }, [renderResult])
 
     // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,7 +164,6 @@ export default function ScoreAuditPage() {
             setReferenceImages(prev => new Map(prev).set(selectedMeasure, reader.result as string))
         }
         reader.readAsDataURL(file)
-        // Reset input so same file can be re-uploaded
         if (fileInputRef.current) fileInputRef.current.value = ''
     }, [selectedMeasure])
 
@@ -157,13 +171,19 @@ export default function ScoreAuditPage() {
     const handleRunAudit = useCallback(async () => {
         if (!selectedMeasure) return
         const ref = referenceImages.get(selectedMeasure)
-        const rendered = croppedRenders.get(selectedMeasure)
-        if (!ref || !rendered) return
+        if (!ref) return
 
         setAuditError(null)
         setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'auditing'))
+        setCapturing(true)
 
         try {
+            // Capture just this measure on-demand
+            const rendered = await captureMeasure(selectedMeasure)
+            if (!rendered) throw new Error('Failed to capture measure render')
+
+            setCapturing(false)
+
             const result = await runScoreAudit(ref, rendered, selectedModel, {
                 start: selectedMeasure,
                 end: selectedMeasure,
@@ -177,8 +197,9 @@ export default function ScoreAuditPage() {
         } catch (e) {
             setAuditError(e instanceof Error ? e.message : 'Audit failed')
             setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pending'))
+            setCapturing(false)
         }
-    }, [selectedMeasure, referenceImages, croppedRenders, selectedModel])
+    }, [selectedMeasure, referenceImages, selectedModel, captureMeasure])
 
     // ── Mark as OK / Skip ──
     const markAsPass = useCallback(() => {
@@ -192,10 +213,14 @@ export default function ScoreAuditPage() {
     }, [selectedMeasure])
 
     // ── Navigation ──
-    const measureCount = renderResult?.measureCount ?? score?.measures.length ?? 0
     const goToMeasure = useCallback((m: number) => {
-        if (m >= 1 && m <= measureCount) setSelectedMeasure(m)
-    }, [measureCount])
+        if (m >= 1 && m <= measureCount) {
+            setSelectedMeasure(m)
+            // Auto-switch page if measure is outside current page
+            const targetPage = Math.floor((m - 1) / MEASURES_PER_PAGE)
+            if (targetPage !== page) setPage(targetPage)
+        }
+    }, [measureCount, page])
 
     const goNext = useCallback(() => {
         if (selectedMeasure && selectedMeasure < measureCount) goToMeasure(selectedMeasure + 1)
@@ -238,9 +263,29 @@ export default function ScoreAuditPage() {
 
     // Current measure data
     const currentRef = selectedMeasure ? referenceImages.get(selectedMeasure) : null
-    const currentCrop = selectedMeasure ? croppedRenders.get(selectedMeasure) : null
     const currentResult = selectedMeasure ? measureResults.get(selectedMeasure) : null
     const currentStatus = selectedMeasure ? (measureStatuses.get(selectedMeasure) ?? 'pending') : 'pending'
+
+    // Is selected measure on the current page?
+    const selectedOnPage = selectedMeasure
+        ? selectedMeasure >= pageStartMeasure && selectedMeasure < pageStartMeasure + MEASURES_PER_PAGE
+        : false
+
+    // Measure preview via CSS clip — show the live SVG cropped to the selected measure
+    const previewStyle = useMemo(() => {
+        if (!selectedMeasure || !renderResult || !selectedOnPage) return null
+        const x = renderResult.measureXMap.get(selectedMeasure)
+        const w = renderResult.measureWidthMap.get(selectedMeasure)
+        if (x === undefined || w === undefined) return null
+        const { top, height } = renderResult.systemYMap
+        const padding = 8
+        return {
+            clipX: Math.max(0, x - padding),
+            clipY: Math.max(0, top - padding),
+            clipW: w + padding * 2,
+            clipH: height + padding * 2,
+        }
+    }, [selectedMeasure, renderResult, selectedOnPage])
 
     if (loading) {
         return (
@@ -274,12 +319,11 @@ export default function ScoreAuditPage() {
                 </div>
 
                 <div className="flex items-center gap-6">
-                    {/* Progress */}
                     {measureCount > 0 && (
                         <div className="flex items-center gap-3 text-xs text-zinc-500">
                             <span className="text-green-600">{stats.pass} pass</span>
                             <span className="text-red-600">{stats.fail} fail</span>
-                            <span className="text-zinc-500">{stats.skipped} skip</span>
+                            <span>{stats.skipped} skip</span>
                             <span>{reviewed}/{measureCount}</span>
                             <div className="w-32 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
                                 <div
@@ -290,7 +334,6 @@ export default function ScoreAuditPage() {
                         </div>
                     )}
 
-                    {/* Model selector */}
                     <div className="flex items-center gap-2">
                         <label className="text-xs text-zinc-500">Model:</label>
                         <select
@@ -307,42 +350,67 @@ export default function ScoreAuditPage() {
             </div>
 
             <div className="flex flex-1 overflow-hidden">
-                {/* ── Left: Score with clickable measure blocks ── */}
+                {/* ── Left: Paginated score ── */}
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Measure block strip */}
-                    <div className="border-b border-zinc-200 px-4 py-2 flex items-center gap-1 overflow-x-auto shrink-0">
-                        {Array.from({ length: measureCount }, (_, i) => i + 1).map(m => {
-                            const status = measureStatuses.get(m) ?? 'pending'
-                            const isSelected = m === selectedMeasure
-                            return (
-                                <button
-                                    key={m}
-                                    onClick={() => setSelectedMeasure(m)}
-                                    className={`
-                                        shrink-0 w-10 h-8 rounded text-xs font-mono border transition-all
-                                        ${STATUS_COLORS[status]}
-                                        ${isSelected ? 'ring-2 ring-purple-500 ring-offset-1 ring-offset-white' : ''}
-                                    `}
-                                >
-                                    {m}
-                                </button>
-                            )
-                        })}
+                    {/* Measure strip + pagination */}
+                    <div className="border-b border-zinc-200 px-4 py-2 flex items-center gap-2 shrink-0">
+                        <Button
+                            variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                            onClick={() => setPage(p => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </Button>
+
+                        <div className="flex items-center gap-1 overflow-x-auto">
+                            {Array.from({ length: measureCount }, (_, i) => i + 1).map(m => {
+                                const status = measureStatuses.get(m) ?? 'pending'
+                                const isSelected = m === selectedMeasure
+                                const isOnPage = m >= pageStartMeasure && m < pageStartMeasure + MEASURES_PER_PAGE
+                                return (
+                                    <button
+                                        key={m}
+                                        onClick={() => goToMeasure(m)}
+                                        className={`
+                                            shrink-0 w-9 h-7 rounded text-[11px] font-mono border transition-all
+                                            ${STATUS_COLORS[status]}
+                                            ${isSelected ? 'ring-2 ring-purple-500 ring-offset-1 ring-offset-white' : ''}
+                                            ${isOnPage ? '' : 'opacity-40'}
+                                        `}
+                                    >
+                                        {m}
+                                    </button>
+                                )
+                            })}
+                        </div>
+
+                        <Button
+                            variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                            disabled={page >= totalPages - 1}
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </Button>
+
+                        <span className="text-xs text-zinc-400 shrink-0 ml-2">
+                            Page {page + 1}/{totalPages}
+                        </span>
                     </div>
 
-                    {/* VexFlow render with overlay */}
+                    {/* VexFlow render — only the current page's measures */}
                     <div className="flex-1 overflow-auto relative" ref={vexflowContainerRef}>
-                        {score ? (
+                        {paginatedScore ? (
                             <div className="relative">
                                 <VexFlowRenderer
-                                    score={score}
+                                    score={paginatedScore}
                                     musicFont="Bravura"
                                     onRenderComplete={handleRenderComplete}
                                 />
                                 {/* Clickable measure overlay */}
                                 {renderResult && (
                                     <div className="absolute inset-0 pointer-events-none">
-                                        {Array.from({ length: measureCount }, (_, i) => i + 1).map(m => {
+                                        {paginatedScore.measures.map((measure, i) => {
+                                            const m = measure.measureNumber
                                             const x = renderResult.measureXMap.get(m)
                                             const w = renderResult.measureWidthMap.get(m)
                                             if (x === undefined || w === undefined) return null
@@ -373,7 +441,7 @@ export default function ScoreAuditPage() {
                             </div>
                         ) : (
                             <div className="text-zinc-500 text-center p-8">
-                                No score loaded — upload a MusicXML file in the editor first
+                                No score loaded
                             </div>
                         )}
                     </div>
@@ -395,10 +463,10 @@ export default function ScoreAuditPage() {
                                     </Button>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <Button variant="ghost" size="sm" className="h-7 text-xs text-green-600 hover:text-green-300" onClick={markAsPass} title="Mark OK (O)">
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs text-green-600" onClick={markAsPass} title="Mark OK (O)">
                                         <Check className="w-3.5 h-3.5 mr-1" /> OK
                                     </Button>
-                                    <Button variant="ghost" size="sm" className="h-7 text-xs text-zinc-500 hover:text-zinc-700" onClick={markAsSkipped} title="Skip (S)">
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs text-zinc-500" onClick={markAsSkipped} title="Skip (S)">
                                         <SkipForward className="w-3.5 h-3.5 mr-1" /> Skip
                                     </Button>
                                 </div>
@@ -406,14 +474,36 @@ export default function ScoreAuditPage() {
 
                             {/* Panel content */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                {/* Cropped VexFlow render */}
+                                {/* Live CSS-clipped preview of the measure */}
                                 <div className="space-y-2">
                                     <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
-                                    <div className="border border-zinc-300 rounded-lg bg-white p-2 flex items-center justify-center min-h-[100px]">
-                                        {currentCrop ? (
-                                            <img src={currentCrop} alt={`Measure ${selectedMeasure} render`} className="max-w-full" />
+                                    <div className="border border-zinc-300 rounded-lg bg-white overflow-hidden min-h-[100px] flex items-center justify-center">
+                                        {previewStyle && vexflowContainerRef.current ? (
+                                            <div
+                                                style={{
+                                                    width: previewStyle.clipW,
+                                                    height: previewStyle.clipH,
+                                                    overflow: 'hidden',
+                                                    position: 'relative',
+                                                }}
+                                            >
+                                                {/* Clone the SVG inline for the preview using dangerouslySetInnerHTML
+                                                     This is a static snapshot — no interactivity needed */}
+                                                <div
+                                                    style={{
+                                                        position: 'absolute',
+                                                        left: -previewStyle.clipX,
+                                                        top: -previewStyle.clipY,
+                                                    }}
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: vexflowContainerRef.current.querySelector('svg')?.outerHTML ?? '',
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : selectedOnPage ? (
+                                            <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
                                         ) : (
-                                            <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+                                            <p className="text-xs text-zinc-400 p-4">Navigate to page {Math.floor((selectedMeasure - 1) / MEASURES_PER_PAGE) + 1} to see preview</p>
                                         )}
                                     </div>
                                 </div>
@@ -443,7 +533,7 @@ export default function ScoreAuditPage() {
                                         {currentRef ? (
                                             <img src={currentRef} alt="Reference" className="max-w-full" />
                                         ) : (
-                                            <div className="text-center text-zinc-600 p-4">
+                                            <div className="text-center text-zinc-400 p-4">
                                                 <Upload className="w-6 h-6 mx-auto mb-1 opacity-40" />
                                                 <p className="text-xs">Upload reference for M{selectedMeasure}</p>
                                             </div>
@@ -454,18 +544,18 @@ export default function ScoreAuditPage() {
                                 {/* Audit button */}
                                 <Button
                                     onClick={handleRunAudit}
-                                    disabled={!currentRef || !currentCrop || currentStatus === 'auditing'}
-                                    className="w-full bg-purple-600 hover:bg-purple-700"
+                                    disabled={!currentRef || !selectedOnPage || currentStatus === 'auditing'}
+                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white"
                                 >
                                     {currentStatus === 'auditing' ? (
-                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing M{selectedMeasure}...</>
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {capturing ? 'Capturing...' : 'Analyzing...'}</>
                                     ) : (
                                         <>Run Audit (Enter)</>
                                     )}
                                 </Button>
 
                                 {auditError && (
-                                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">
+                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-600 text-sm">
                                         {auditError}
                                     </div>
                                 )}
@@ -473,7 +563,6 @@ export default function ScoreAuditPage() {
                                 {/* Results for this measure */}
                                 {currentResult && (
                                     <div className="space-y-3">
-                                        {/* Summary */}
                                         <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
                                             <p className="text-sm text-zinc-700">{currentResult.summary}</p>
                                             <div className="flex gap-3 mt-2 text-xs">
@@ -495,7 +584,6 @@ export default function ScoreAuditPage() {
                                             </div>
                                         </div>
 
-                                        {/* Findings */}
                                         {currentResult.findings.map(finding => {
                                             const cfg = SEVERITY_CONFIG[finding.severity]
                                             const expanded = expandedFindings.has(finding.id)
@@ -516,7 +604,7 @@ export default function ScoreAuditPage() {
                                                         {expanded ? <ChevronUp className="w-3 h-3 text-zinc-500" /> : <ChevronDown className="w-3 h-3 text-zinc-500" />}
                                                     </button>
                                                     {expanded && (
-                                                        <div className="px-3 pb-3 pt-1 border-t border-zinc-300/50 space-y-2 text-sm">
+                                                        <div className="px-3 pb-3 pt-1 border-t border-zinc-200 space-y-2 text-sm">
                                                             <div className="grid grid-cols-2 gap-3">
                                                                 <div>
                                                                     <span className="text-[10px] text-zinc-500 uppercase">Expected</span>
@@ -541,7 +629,7 @@ export default function ScoreAuditPage() {
                             </div>
 
                             {/* Keyboard hint */}
-                            <div className="px-4 py-2 border-t border-zinc-200 text-[10px] text-zinc-600 flex gap-3 shrink-0">
+                            <div className="px-4 py-2 border-t border-zinc-200 text-[10px] text-zinc-400 flex gap-3 shrink-0">
                                 <span>← → navigate</span>
                                 <span>Enter audit</span>
                                 <span>O mark ok</span>
@@ -549,7 +637,7 @@ export default function ScoreAuditPage() {
                             </div>
                         </>
                     ) : (
-                        <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm p-8 text-center">
+                        <div className="flex-1 flex items-center justify-center text-zinc-400 text-sm p-8 text-center">
                             Click a measure block above or in the score to start auditing
                         </div>
                     )}
