@@ -53,7 +53,15 @@ export async function updateConfigAction(
     updates: Partial<Pick<SongConfig, 'title' | 'audio_url' | 'xml_url' | 'midi_url' | 'anchors' | 'beat_anchors' | 'subdivision' | 'is_level2' | 'ai_anchors' | 'is_published' | 'music_font'>>
 ): Promise<SongConfig> {
     const user = await getAuthUser()
-    return updateConfig(id, updates, user.id)
+    console.log('[updateConfigAction] id:', id, 'userId:', user.id, 'keys:', Object.keys(updates))
+    try {
+        const result = await updateConfig(id, updates, user.id)
+        console.log('[updateConfigAction] success')
+        return result
+    } catch (err) {
+        console.error('[updateConfigAction] FAILED:', err instanceof Error ? err.message : err)
+        throw err
+    }
 }
 
 export async function deleteConfigAction(id: string): Promise<void> {

@@ -150,7 +150,7 @@ export async function getPublishedConfigs(): Promise<SongConfig[]> {
 
 export async function updateConfig(
     id: string,
-    updates: Partial<Pick<SongConfig, 'title' | 'audio_url' | 'xml_url' | 'midi_url' | 'anchors' | 'beat_anchors' | 'subdivision' | 'is_level2' | 'is_published' | 'music_font'>>,
+    updates: Partial<Pick<SongConfig, 'title' | 'audio_url' | 'xml_url' | 'midi_url' | 'anchors' | 'beat_anchors' | 'subdivision' | 'is_level2' | 'ai_anchors' | 'is_published' | 'music_font'>>,
     userId: string
 ): Promise<SongConfig> {
     const sb = getSupabase()
