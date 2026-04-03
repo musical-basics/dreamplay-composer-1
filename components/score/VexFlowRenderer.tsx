@@ -282,24 +282,10 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
 
                     const vfNotes: StaveNote[] = []
 
-                    // ── Beam group window ──
-                    // Standard rule: a beam group contains exactly 4 note-heads of the shortest
-                    // beamable duration in this voice. Pre-scan to find the minimum duration,
-                    // then derive the beat-window. Examples in 4/4:
-                    //   All 8th notes  → minDur = 0.5 beats → window = 4×0.5 = 2 beats (half-bar)
-                    //   All 16th notes → minDur = 0.25 beats → window = 4×0.25 = 1 beat (per-beat)
-                    //   Mixed 8th+16th → minDur = 0.25 beats → window = 1 beat
-                    // Clamp to [0.25, 2] so we don't generate unreasonably large/small groups.
-                    const beamableNotesList = voice.notes.filter(n => !n.isRest && isBeamable(n.duration))
-                    const minDurBeats = beamableNotesList.reduce(
-                        (min, n) => Math.min(min, durationToBeats(n.duration)),
-                        Infinity
-                    )
-                    // window = 4 notes wide, clamped to [0.25, 2]
-                    const beamGroupBeats = Math.min(Math.max(4 * (isFinite(minDurBeats) ? minDurBeats : 0.5), 0.25), 2)
-
-                    // Track beamable notes with their beat position so we can split at beat boundaries.
-                    const beamableWithBeat: Array<{ note: StaveNote; beatFloor: number }> = []
+                    // Track beamable notes with a string key so same-duration runs
+                    // bucket separately from different-duration runs within the same voice.
+                    // Key = "<beamGroupBeats>_<beatFloor>" — see per-note computation below.
+                    const beamableWithBeat: Array<{ note: StaveNote; beamKey: string }> = []
 
                     for (const note of voice.notes) {
                         const staveClef = staff.staffIndex === 0 ? currentTrebleClef : currentBassClef
@@ -351,12 +337,18 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                             currentTupletNotes = null
                         }
 
-                        // Collect beamable notes; compute which beam bucket this note falls into.
-                        // Bucket key = floor((beat - 1) / beamGroupBeats), so notes within the
-                        // same beam-group window share the same bucket regardless of sub-beat position.
+                        // Per-note beam bucketing:
+                        // Compute this note's natural beam group window from ITS OWN duration.
+                        // Using per-note durations (not voice-minimum) keeps 8th-note runs
+                        // in half-bar groups even when the same voice also has 16th runs.
+                        // String key "<beamGroupBeats>_<floor>" keeps different-duration notes
+                        // in separate buckets (prevents e.g. 8ths mixing with 16ths).
                         if (!note.isRest && isBeamable(note.duration)) {
-                            const beatFloor = Math.floor((note.beat - 1) / beamGroupBeats)
-                            beamableWithBeat.push({ note: staveNote, beatFloor })
+                            const noteDurBeats = durationToBeats(note.duration)
+                            const noteBGBeats = Math.min(Math.max(4 * noteDurBeats, 0.25), 2)
+                            const noteBeatFloor = Math.floor((note.beat - 1) / noteBGBeats)
+                            const beamKey = `${noteBGBeats}_${noteBeatFloor}`
+                            beamableWithBeat.push({ note: staveNote, beamKey })
                         }
 
                         // Tie tracking
@@ -486,11 +478,11 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                     // re-splitting our carefully pre-grouped buckets with its own heuristics.
                     if (beamableWithBeat.length >= 2) {
                         try {
-                            // Bucket notes by beam-group floor
-                            const beatBuckets = new Map<number, StaveNote[]>()
-                            for (const { note: sn, beatFloor } of beamableWithBeat) {
-                                if (!beatBuckets.has(beatFloor)) beatBuckets.set(beatFloor, [])
-                                beatBuckets.get(beatFloor)!.push(sn)
+                            // Bucket notes by their string beam key
+                            const beatBuckets = new Map<string, StaveNote[]>()
+                            for (const { note: sn, beamKey } of beamableWithBeat) {
+                                if (!beatBuckets.has(beamKey)) beatBuckets.set(beamKey, [])
+                                beatBuckets.get(beamKey)!.push(sn)
                             }
                             // One Beam per bucket — all notes beam together unconditionally.
                             // autoStem: single-voice → true (VexFlow picks consistent stem direction
