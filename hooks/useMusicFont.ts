@@ -47,6 +47,7 @@ export function useMusicFont(options: UseMusicFontOptions = {}): UseMusicFontRet
     const [musicFont, setMusicFont] = useState('')
     const [initialLoading, setInitialLoading] = useState(showInitialOverlay)
     const savedFontRef = useRef('')
+    const hasAppliedInitialRef = useRef(false)
     const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // ─── Store toggles that cause VexFlow re-renders ──
@@ -90,7 +91,13 @@ export function useMusicFont(options: UseMusicFontOptions = {}): UseMusicFontRet
             clearTimeout(resetTimerRef.current)
             resetTimerRef.current = null
         }
-        // Apply after delay
+        // First load from DB: apply immediately (no delay, no flash of default font)
+        if (!hasAppliedInitialRef.current) {
+            hasAppliedInitialRef.current = true
+            setMusicFont(font)
+            return
+        }
+        // Subsequent changes (dropdown, tab switch): apply after delay
         resetTimerRef.current = setTimeout(() => {
             setMusicFont(font)
             resetTimerRef.current = null
