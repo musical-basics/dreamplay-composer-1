@@ -283,6 +283,7 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                     )
                     // window = 4 notes wide, clamped to [0.25, 2]
                     const beamGroupBeats = Math.min(Math.max(4 * (isFinite(minDurBeats) ? minDurBeats : 0.5), 0.25), 2)
+                    if (mIdx === 0) console.log(`[BEAM] M1 staff${staff.staffIndex} voice${voice.voiceIndex}: minDurBeats=${minDurBeats} beamGroupBeats=${beamGroupBeats} beamable=${beamableNotesList.length} durations=${beamableNotesList.slice(0,4).map(n=>n.duration).join(',')} beats=${beamableNotesList.slice(0,6).map(n=>n.beat.toFixed(2)).join(',')}`)
 
                     // Track beamable notes with their beat position so we can split at beat boundaries.
                     const beamableWithBeat: Array<{ note: StaveNote; beatFloor: number }> = []
