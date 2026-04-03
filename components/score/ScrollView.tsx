@@ -280,7 +280,16 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
                 } else break
             }
             let progress = 0
-            if (endT !== Infinity && endT > startT) progress = Math.max(0, Math.min(1, (time - startT) / (endT - startT)))
+            if (endT !== Infinity && endT > startT) {
+                progress = Math.max(0, Math.min(1, (time - startT) / (endT - startT)))
+            } else if (duration > 0 && totalMeasuresRef.current > 0) {
+                // Single anchor fallback: estimate linear progress across all measures
+                const totalM = totalMeasuresRef.current
+                const globalProgress = Math.max(0, Math.min(1, (time - startT) / (duration - startT)))
+                const measuresFromStart = globalProgress * (totalM - currentM + 1)
+                currentM = Math.min(totalM, sorted[sorted.length - 1].measure + Math.floor(measuresFromStart))
+                progress = measuresFromStart % 1
+            }
             return { measure: currentM, beat: 1, progress, isBeatInterpolation: false }
         }
 
