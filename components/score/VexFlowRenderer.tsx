@@ -109,19 +109,11 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
         if (musicFont) {
             VexFlow.setFonts(musicFont, 'Academico')
         }
-        // Real verification: iterate document.fonts to confirm the FontFace exists (not just check())
         const fontFaces = [...document.fonts]
         const targetFace = musicFont ? fontFaces.find(ff => ff.family === musicFont && ff.status === 'loaded') : null
-        const fontCount = musicFont ? fontFaces.filter(ff => ff.family === musicFont).length : 0
         console.log('[FONT DEBUG] renderScore: musicFont =', JSON.stringify(musicFont),
-            'FontFace found:', !!targetFace, `(${fontCount} entries)`,
+            'FontFace found:', !!targetFace,
             'getFonts():', VexFlow.getFonts())
-
-        // If the selected font has no actual FontFace in document.fonts, skip rendering.
-        if (musicFont && !targetFace) {
-            console.warn('[FONT DEBUG] No FontFace for', musicFont, '— deferring render')
-            return
-        }
 
         // Clear previous render
         containerRef.current.innerHTML = ''

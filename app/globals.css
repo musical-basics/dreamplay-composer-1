@@ -126,6 +126,16 @@
 }
 
 /* ============================================
+   VexFlow / DreamFlow: Isolate SVG from global font cascade.
+   Tailwind's `font-sans` on <body> sets font-family via a CSS class,
+   which overrides SVG presentation attributes (zero specificity).
+   Without this rule, music glyphs render with Geist instead of Bravura.
+   ============================================ */
+.vexflow-container {
+    font-family: initial;
+}
+
+/* ============================================
    Studio Mode: Hides everything except the score
    for clean video recording (from Score Follower).
    ============================================ */
