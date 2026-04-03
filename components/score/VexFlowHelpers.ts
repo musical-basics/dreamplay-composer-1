@@ -8,11 +8,35 @@ import type { IntermediateNote } from '@/lib/score/IntermediateScore'
 
 // ─── Layout Constants ──────────────────────────────────────────────
 
-export const STAVE_WIDTH = 250         // px per measure
+export const STAVE_WIDTH = 250         // px per measure (base/minimum)
 export const STAVE_Y_TREBLE = 60      // Y offset for treble stave (room for ledger lines + articulations above)
 export const STAVE_SPACING = 140      // vertical space between treble and bass
 export const LEFT_MARGIN = 20         // px left margin
 export const SYSTEM_HEIGHT = 380      // total height for a grand staff system
+
+/**
+ * Compute a dynamic stave width for a measure based on how many noteheads
+ * it contains. More notes require more horizontal space to avoid overflow.
+ *
+ * Formula: base + noteScale * max(notesInMeasure across all staves/voices)
+ *   base    = 140px  (minimum — enough for clef/key/time sig overhead)
+ *   noteScale = 12px per note — each notehead needs ~12px of notehead space
+ * The result is clamped to [MIN_STAVE_WIDTH, MAX_STAVE_WIDTH].
+ */
+export function getMeasureWidth(measure: { staves: Array<{ voices: Array<{ notes: unknown[] }> }> }): number {
+    const MIN_WIDTH = 160
+    const MAX_WIDTH = 600
+    const BASE = 140
+    const PER_NOTE = 12   // px per notehead
+
+    let maxNotes = 0
+    for (const staff of measure.staves) {
+        for (const voice of staff.voices) {
+            if (voice.notes.length > maxNotes) maxNotes = voice.notes.length
+        }
+    }
+    return Math.min(Math.max(BASE + maxNotes * PER_NOTE, MIN_WIDTH), MAX_WIDTH)
+}
 
 // ─── Types ─────────────────────────────────────────────────────────
 

@@ -617,6 +617,15 @@ export default function AdminEditor() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
 
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-zinc-700 text-zinc-400 hover:text-white h-8"
+                                onClick={() => router.push(`/studio/audit/${configId}`)}
+                            >
+                                Score Audit
+                            </Button>
+
                             <div className="w-px h-6 bg-zinc-700 mx-1" />
 
                             {/* Transport */}

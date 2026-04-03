@@ -9,6 +9,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@aws-sdk/client-s3": "^3.1017.0",
     "@aws-sdk/s3-request-presigner": "^3.1017.0",
     "@clerk/nextjs": "^7.0.7",
@@ -52,6 +53,7 @@
     "date-fns": "4.1.0",
     "dreamflow": "github:musical-basics/dreamflow",
     "embla-carousel-react": "8.6.0",
+    "html2canvas-pro": "^2.0.2",
     "input-otp": "1.4.2",
     "ioredis": "^5.10.0",
     "lucide-react": "^0.564.0",
