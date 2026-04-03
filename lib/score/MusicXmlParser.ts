@@ -12,6 +12,7 @@ import type {
     IntermediateNote,
 } from './IntermediateScore'
 import { fetchMusicXmlText } from './fetchMusicXml'
+import { normalizeMusicXml } from './normalizeMusicXml'
 
 // ─── Public API ────────────────────────────────────────────────────
 
@@ -39,6 +40,9 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
     if (parserErrors.length > 0) {
         throw new Error(`MusicXML parse error: ${parserErrors[0].textContent}`)
     }
+
+    // Normalize XML before parsing (fix articulation placement, etc.)
+    normalizeMusicXml(doc)
 
     // Validate root element is a MusicXML document
     const root = doc.documentElement.tagName

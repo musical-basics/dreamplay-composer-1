@@ -9,10 +9,10 @@ import type { IntermediateNote } from '@/lib/score/IntermediateScore'
 // ─── Layout Constants ──────────────────────────────────────────────
 
 export const STAVE_WIDTH = 250         // px per measure
-export const STAVE_Y_TREBLE = 40      // Y offset for treble stave
-export const STAVE_SPACING = 120      // vertical space between treble and bass
+export const STAVE_Y_TREBLE = 60      // Y offset for treble stave (room for ledger lines + articulations above)
+export const STAVE_SPACING = 140      // vertical space between treble and bass
 export const LEFT_MARGIN = 20         // px left margin
-export const SYSTEM_HEIGHT = 300      // total height for a grand staff system
+export const SYSTEM_HEIGHT = 380      // total height for a grand staff system
 
 // ─── Types ─────────────────────────────────────────────────────────
 

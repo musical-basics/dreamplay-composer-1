@@ -313,4 +313,102 @@ The browser tries Bravura first for each character. Music symbols (PUA) are foun
 8. When using debounced state for rendering, always expose the immediate ref value for save operations to avoid race conditions.
 9. pnpm's content-addressable store means editing `node_modules/pkg/file.js` may not affect the actual file the bundler reads. Always find the real file under `node_modules/.pnpm/...`.
 
+---
+
+## 9. MusicXML Articulation Placement — Preprocessing Fix (April 2026)
+
+**Problem**: Staccato dots and tenuto marks appear on the wrong side of noteheads when MusicXML is exported from notation software like Sibelius. The correct engraving rule is:
+- **Stem down** → articulation on **top** of the notehead (above)
+- **Stem up** → articulation on **bottom** of the notehead (below)
+
+Sibelius (and many other notation editors) export `<staccato />` and `<tenuto />` elements **without a `placement` attribute**, leaving it up to the renderer to guess. Some renderers get it wrong.
+
+**Root Cause**: The MusicXML spec defines an optional `placement` attribute on articulation elements (`above` or `below`). When omitted, the rendering application chooses — and not all renderers follow the standard engraving convention. The stem direction is already encoded in the `<stem>` element of each `<note>`, but articulations don't reference it.
+
+**Example — Before Fix**:
+```xml
+<note>
+    <pitch><step>C</step><octave>3</octave></pitch>
+    <duration>256</duration>
+    <voice>2</voice>
+    <type>quarter</type>
+    <stem>up</stem>          <!-- stem is UP -->
+    <notations>
+        <articulations>
+            <staccato />     <!-- no placement — renderer guesses wrong -->
+        </articulations>
+    </notations>
+</note>
+```
+
+**Example — After Fix**:
+```xml
+<staccato placement="below" />   <!-- stem up → placement below -->
+```
+
+**The Fix — MusicXML Preprocessing Function**:
+
+This should run as an intermediate step between fetching the MusicXML text and passing it to the parser. It operates on the raw XML DOM before any VexFlow conversion.
+
+```typescript
+/**
+ * Preprocesses MusicXML to fix articulation placement based on stem direction.
+ * 
+ * Many notation editors (Sibelius, Finale, MuseScore) export <staccato/> and
+ * <tenuto/> without a placement attribute. This function reads the <stem>
+ * direction from each <note> and sets the correct placement:
+ *   - stem "down" → placement="above" (articulation on top of notehead)
+ *   - stem "up"   → placement="below" (articulation on bottom of notehead)
+ * 
+ * @param xmlDoc - Parsed XML Document (from DOMParser)
+ * @returns The same document, mutated in place with placement attributes added
+ */
+function fixArticulationPlacement(xmlDoc: Document): Document {
+    const notes = xmlDoc.querySelectorAll('note')
+    
+    for (const note of notes) {
+        const stem = note.querySelector('stem')
+        const articulations = note.querySelector('notations > articulations')
+        if (!stem || !articulations) continue
+
+        const stemDir = stem.textContent?.trim()
+        let placement: string | null = null
+        if (stemDir === 'down') placement = 'above'
+        else if (stemDir === 'up') placement = 'below'
+        else continue
+
+        for (const art of articulations.children) {
+            const tag = art.tagName
+            if (tag === 'staccato' || tag === 'tenuto') {
+                art.setAttribute('placement', placement)
+            }
+        }
+    }
+    
+    return xmlDoc
+}
+```
+
+**Where to Integrate**: In `MusicXmlParser.ts`, call this function right after `DOMParser().parseFromString()` and before any note iteration begins. The function mutates the DOM in place, so the existing parser code doesn't need changes — it just receives a cleaner document.
+
+```typescript
+// In parseMusicXmlString():
+const parser = new DOMParser()
+const xmlDoc = parser.parseFromString(xmlText, 'application/xml')
+
+// ← INSERT HERE: Fix articulation placement before parsing
+fixArticulationPlacement(xmlDoc)
+
+// ... rest of existing parsing logic
+```
+
+**Current Rendering Workaround**: The VexFlow renderer in `VexFlowRenderer.tsx` (lines 535-551) already has a **post-format repositioning pass** that sets articulation position based on `stemDir` after VexFlow assigns stems. This means DreamPlay Composer renders articulations correctly regardless of MusicXML placement attributes. However, the preprocessing fix is still valuable because:
+
+1. **Other consumers** of the MusicXML (e.g., re-export, other renderers) benefit from correct placement in the source XML
+2. **Semantic correctness** — the XML should encode the correct placement rather than relying on each renderer to fix it
+3. **Eliminates redundant work** — if placement is already correct in the XML, the post-format repositioning pass becomes a no-op rather than a correction
+
+**Affected Articulations**: Currently fixes `staccato` and `tenuto`. Can be extended to `accent`, `strong-accent`, `staccatissimo`, etc. Fermatas are excluded — they always go above the staff regardless of stem direction (handled separately in dreamflow).
+
+**Key Lesson**: When importing MusicXML from third-party editors, never trust that optional attributes are present. Preprocess the XML to normalize missing attributes based on other data already in the document (like stem direction). This is cheaper than fixing rendering artifacts downstream.
 
