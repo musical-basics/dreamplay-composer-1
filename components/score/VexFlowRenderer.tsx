@@ -28,7 +28,7 @@ import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import {
     STAVE_WIDTH, STAVE_Y_TREBLE, STAVE_SPACING, LEFT_MARGIN, SYSTEM_HEIGHT,
     createStaveNote, isBeamable, addArticulation, detectHeuristicTuplets,
-    attachGraceNotes, processSlurs, getBeamGroups,
+    attachGraceNotes, processSlurs,
     type NoteData, type VexFlowRenderResult, type TupletData, type ActiveSlurs,
 } from './VexFlowHelpers'
 
@@ -267,7 +267,9 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                         : undefined
 
                     const vfNotes: StaveNote[] = []
-                    const beamableNotes: StaveNote[] = []
+                    // Track beamable notes with their beat position so we can split at beat boundaries.
+                    // Using beat-aware grouping rather than VexFlow's fraction groups gives exact control.
+                    const beamableWithBeat: Array<{ note: StaveNote; beatFloor: number }> = []
 
                     for (const note of voice.notes) {
                         const staveClef = staff.staffIndex === 0 ? currentTrebleClef : currentBassClef
@@ -319,9 +321,11 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                             currentTupletNotes = null
                         }
 
-                        // All beamable notes go into auto-beam pool (including tuplets)
+                        // Collect beamable notes with beat position for exact beat-boundary splitting
                         if (!note.isRest && isBeamable(note.duration)) {
-                            beamableNotes.push(staveNote)
+                            // note.beat is 1-based; floor(beat - 1) gives 0-based beat index
+                            const beatFloor = Math.floor(note.beat - 0.001)
+                            beamableWithBeat.push({ note: staveNote, beatFloor })
                         }
 
                         // Tie tracking
@@ -445,27 +449,27 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                     voiceStaveMap.set(vfVoice, stave)
                     if (isMultiVoice) multiVoiceVoices.add(vfVoice)
 
-                    if (beamableNotes.length >= 2) {
+                    // ── Beat-aware beaming ──
+                    // Group beamable notes by which quarter beat they start on, then beam each group
+                    // separately. This guarantees beams never cross beat boundaries in any time signature.
+                    if (beamableWithBeat.length >= 2) {
                         try {
-                            // Compute beat-aligned beam groups for the time signature.
-                            // Standard engraving rules:
-                            //   - Simple duple/quadruple (2/4, 4/4): beam in quarter-note groups
-                            //     → each group = 1 quarter = Fraction(1, 4)
-                            //     → in 4/4: four groups of 1 quarter = 2 eighth notes or 4 sixteenths per group
-                            //   - 3/4: beam in quarter-note groups too (one per beat)
-                            //   - Compound (6/8, 9/8, 12/8): beam in dotted-quarter groups
-                            //     → each group = 3 eighth notes = Fraction(3, 8)
-                            // Vexflow's Beam.generateBeams(notes, { groups }) uses Fraction(n, d)
-                            // where n/d is the GROUP SIZE in whole-note fractions.
-                            // E.g. Fraction(1, 4) = 1 quarter note = 2 eighths or 4 sixteenths per beam group.
-                            const beamGroups = getBeamGroups(currentTimeSigNum, currentTimeSigDen)
-                            const beamOpts: any = { groups: beamGroups }
-                            // For multi-voice, force beam stem direction to match voice
-                            if (stemDir !== undefined) {
-                                beamOpts.stemDirection = stemDir
-                                beamOpts.maintainStemDirections = true
+                            // Bucket notes by beat floor
+                            const beatBuckets = new Map<number, StaveNote[]>()
+                            for (const { note: sn, beatFloor } of beamableWithBeat) {
+                                if (!beatBuckets.has(beatFloor)) beatBuckets.set(beatFloor, [])
+                                beatBuckets.get(beatFloor)!.push(sn)
                             }
-                            measureBeams.push(...Beam.generateBeams(beamableNotes, beamOpts))
+                            // Beam each bucket individually
+                            for (const [, groupNotes] of beatBuckets) {
+                                if (groupNotes.length < 2) continue
+                                const beamOpts: any = {}
+                                if (stemDir !== undefined) {
+                                    beamOpts.stemDirection = stemDir
+                                    beamOpts.maintainStemDirections = true
+                                }
+                                measureBeams.push(...Beam.generateBeams(groupNotes, beamOpts))
+                            }
                         } catch { /* ignore */ }
                     }
                 }
