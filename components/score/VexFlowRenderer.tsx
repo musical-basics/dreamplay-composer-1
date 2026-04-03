@@ -739,10 +739,28 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
 
     }, [score, onRenderComplete, fontsLoaded, musicFont])
 
-    // Render when score changes
+    // Render when score changes.
+    // After the first render, force a second render pass after a short delay.
+    // The browser registers the font as "loaded" but glyph shaping for SMuFL
+    // Private Use Area characters isn't complete until a subsequent layout pass.
+    // We suppress visibility (via fontSettled) until the re-render is done.
+    const [fontSettled, setFontSettled] = useState(false)
+    const hasInitialRenderedRef = useRef(false)
     useEffect(() => {
         renderScore()
-    }, [renderScore])
+        if (!hasInitialRenderedRef.current && fontsLoaded && score) {
+            hasInitialRenderedRef.current = true
+            const timer = setTimeout(() => {
+                console.log('[FONT DEBUG] Forcing post-initial re-render for glyph shaping')
+                renderScore()
+                setFontSettled(true)
+            }, 300)
+            return () => clearTimeout(timer)
+        } else if (hasInitialRenderedRef.current) {
+            // Subsequent renders (font change, resize, etc.) — already settled
+            setFontSettled(true)
+        }
+    }, [renderScore, fontsLoaded, score])
 
     // Handle resize
     useEffect(() => {
@@ -758,7 +776,7 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
             style={{
                 minWidth: '100%',
                 minHeight: `${SYSTEM_HEIGHT}px`,
-                opacity: isRendered ? 1 : 0,
+                opacity: (isRendered && fontSettled) ? 1 : 0,
                 transition: 'opacity 0.2s',
             }}
         />

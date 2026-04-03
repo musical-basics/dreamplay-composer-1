@@ -207,4 +207,110 @@ Mount / Tab Return
 3. Browser tabs are hostile to web fonts. Always re-initialize fonts on `visibilitychange` for any app that uses custom web fonts.
 4. For student-facing UX, hide all font loading behind a timed overlay rather than relying on "ready" promises — those promises are unreliable.
 
+---
+
+## 8. Music Font Renders Wrong Glyphs Despite Being "Loaded" (April 2026)
+
+**Problem**: On page load, the score renders with wrong-looking glyphs (not Bravura) even though:
+- `document.fonts` confirms Bravura is loaded (`FontFace.status === 'loaded'`)
+- `VexFlow.getFonts()` returns `['Bravura', 'Academico']`
+- `getComputedStyle()` on SVG `<text>` elements shows `font-family: Bravura, Academico`
+- Manually re-selecting the font from the dropdown (triggering a re-render) fixes it
+
+**Root Cause (Three Layers)**:
+
+### Layer 1: CSS Cascade Overrides SVG Presentation Attributes
+
+Tailwind's `font-sans` class on `<body>` generates a CSS rule like `font-family: 'Geist', 'Geist Fallback'` with specificity `0,1,0`. SVG presentation attributes (e.g., `font-family="Bravura,Academico"` set by VexFlow on `<text>` elements) have **zero specificity** (`0,0,0`). The CSS rule wins, so all SVG text renders with Geist instead of Bravura.
+
+**Fix (globals.css)**:
+```css
+.vexflow-container {
+    font-family: initial;
+}
+```
+This breaks the CSS font cascade at the container boundary.
+
+### Layer 2: VexFlow's `applyAttributes()` Skips Duplicate Font Attributes
+
+DreamFlow's `SVGContext.applyAttributes()` method (svgcontext.ts:315-330) compares attributes against the parent group's attributes and **skips setting font-family on `<text>` elements when it matches the parent group**. This optimization means many `<text>` elements have NO `font-family` attribute at all and rely entirely on CSS inheritance — which is broken by Layer 1.
+
+**Fix (dreamflow — svgcontext.ts `fillText()`)**: After `applyAttributes()`, force font properties as **inline styles** on every `<text>` element:
+```typescript
+// In fillText(), after applyAttributes(txt, attributes):
+const fontFamily = attributes['font-family'];
+const fontSize = attributes['font-size'];
+if (fontFamily || fontSize) {
+    let style = '';
+    if (fontFamily) style += `font-family:${fontFamily};`;
+    if (fontSize) style += `font-size:${fontSize};`;
+    // ...fontWeight, fontStyle
+    txt.setAttribute('style', style);
+}
+```
+Inline styles have the highest CSS specificity and cannot be overridden by external CSS.
+
+### Layer 3: Browser Glyph Shaping Delay for Private Use Area Characters
+
+Even with Layers 1 and 2 fixed, the first render still shows wrong glyphs. The browser registers the font as "loaded" in `document.fonts`, but **glyph shaping for Private Use Area (PUA) codepoints** (where SMuFL music symbols like noteheads live: U+E000–U+F8FF) **isn't complete until a subsequent layout pass**. The browser needs one full layout cycle to map PUA codepoints to the correct font's glyph outlines.
+
+This is a fundamental browser behavior — not a bug in VexFlow or dreamflow. It affects any web font that uses PUA characters.
+
+**Fix (VexFlowRenderer.tsx)**: Force a second render after 300ms and keep the score invisible until the second render completes:
+```tsx
+const [fontSettled, setFontSettled] = useState(false)
+const hasInitialRenderedRef = useRef(false)
+
+useEffect(() => {
+    renderScore()
+    if (!hasInitialRenderedRef.current && fontsLoaded && score) {
+        hasInitialRenderedRef.current = true
+        const timer = setTimeout(() => {
+            renderScore()        // Re-render with correct glyph shaping
+            setFontSettled(true)  // Now show the score
+        }, 300)
+        return () => clearTimeout(timer)
+    } else if (hasInitialRenderedRef.current) {
+        setFontSettled(true)
+    }
+}, [renderScore, fontsLoaded, score])
+
+// In the JSX:
+// opacity: (isRendered && fontSettled) ? 1 : 0
+```
+
+### Layer 4: Font Save Race Condition (bonus)
+
+`useMusicFont` delays setting `musicFont` state by 1 second for toggle-triggered re-renders. If the user changes the font dropdown and hits Save within that window, the old/stale `musicFont` state was saved to DB.
+
+**Fix**: Expose `savedFont` (from the ref, always immediately up-to-date) from the hook and use it in `handleSave` instead of the delayed `musicFont` state.
+
+### Understanding Bravura + Academico Font Pairing
+
+DreamFlow's `setFonts('Bravura', 'Academico')` creates the CSS font stack `font-family: Bravura, Academico`. These are two different fonts with different roles:
+- **Bravura** = music glyph font (noteheads, clefs, accidentals, rests — all in Unicode Private Use Area)
+- **Academico** = text font (dynamic markings "pp"/"ff", tempo text, lyrics — regular Latin characters)
+
+The browser tries Bravura first for each character. Music symbols (PUA) are found in Bravura. Regular text characters (Latin) fall through to Academico. This is intentional — do not separate them.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `app/globals.css` | Added `.vexflow-container { font-family: initial; }` to block CSS cascade |
+| `dreamflow/src/svgcontext.ts` | Force inline `style` on `<text>` elements in `fillText()` |
+| `dreamflow/build/esm/src/svgcontext.js` | Same fix in built ESM output |
+| `components/score/VexFlowRenderer.tsx` | 300ms re-render + `fontSettled` visibility gate; `fontsReady` polling |
+| `hooks/useMusicFont.ts` | Expose `savedFont` ref for immediate font value |
+| `app/studio/edit/[id]/page.tsx` | Use `savedFont` in `handleSave` |
+| `dreamflow/entry/vexflow.ts` | Export `fontsReady` promise (not used by consumer yet due to pnpm) |
+
+### Key Lessons (New)
+
+5. SVG presentation attributes have **zero CSS specificity**. Any CSS class rule (even inherited from `<body>`) overrides them. Always use inline styles for font properties on SVG `<text>` elements when CSS frameworks are in play.
+6. `document.fonts.check('30px "Bravura"')` returns `true` **vacuously** when no matching FontFace exists. Iterate `[...document.fonts]` and check `ff.family === 'Bravura' && ff.status === 'loaded'` for reliable verification.
+7. Browser glyph shaping for PUA codepoints (SMuFL music fonts) requires a layout reflow after font load. A 300ms delayed re-render with visibility gating is the standard workaround.
+8. When using debounced state for rendering, always expose the immediate ref value for save operations to avoid race conditions.
+9. pnpm's content-addressable store means editing `node_modules/pkg/file.js` may not affect the actual file the bundler reads. Always find the real file under `node_modules/.pnpm/...`.
+
 
