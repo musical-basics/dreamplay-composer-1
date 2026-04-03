@@ -27,27 +27,28 @@ export type AuditResult = {
 }
 
 /** Fetch available Claude models that support vision */
+const DEFAULT_MODELS = [
+    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+]
+
 export async function fetchAvailableModels(): Promise<{ id: string; name: string }[]> {
     const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return []
+    if (!apiKey) return DEFAULT_MODELS
 
     try {
         const client = new Anthropic({ apiKey })
         const response = await client.models.list({ limit: 20 })
 
         const visionModels = response.data
-            .filter(m => m.id.includes('claude') && !m.id.includes('haiku'))
+            .filter(m => m.id.includes('claude'))
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
             .map(m => ({ id: m.id, name: m.display_name }))
 
-        return visionModels.length > 0 ? visionModels : [
-            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-        ]
+        return visionModels.length > 0 ? visionModels : DEFAULT_MODELS
     } catch {
-        return [
-            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-            { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-        ]
+        return DEFAULT_MODELS
     }
 }
 

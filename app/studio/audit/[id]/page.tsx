@@ -62,8 +62,12 @@ export default function ScoreAuditPage() {
     const [auditError, setAuditError] = useState<string | null>(null)
     const [capturing, setCapturing] = useState(false)
 
-    // Model selection
-    const [models, setModels] = useState<{ id: string; name: string }[]>([])
+    // Model selection — start with defaults so dropdown is always visible
+    const [models, setModels] = useState<{ id: string; name: string }[]>([
+        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+        { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+    ])
     const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4-20250514')
 
     // Expanded findings
