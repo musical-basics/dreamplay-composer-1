@@ -8,7 +8,7 @@
 import type { NoteEvent, Anchor, BeatAnchor, XMLEvent, V5MapperState } from '../types'
 
 // Re-export audio offset helper from the shared module
-export { getAudioOffset } from './AutoMapper'
+export { getAudioOffset } from './AudioHelpers'
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 

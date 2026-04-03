@@ -1,11 +1,23 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Geist, Geist_Mono, Outfit } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import { dark } from '@clerk/themes'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
     title: 'Ultimate Pianist — Learn Piano with Sheet Music & Falling Notes',
@@ -20,7 +32,7 @@ export default function RootLayout({
     return (
         <ClerkProvider appearance={{ baseTheme: dark }}>
             <html lang="en">
-                <body className="font-sans antialiased bg-black text-white">
+                <body className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} font-sans antialiased bg-black text-white`}>
                     {children}
                 </body>
             </html>

@@ -15,6 +15,7 @@ import type {
     IntermediateVoice,
     IntermediateNote,
 } from './IntermediateScore'
+import { fetchMusicXmlText } from './fetchMusicXml'
 
 // ─── OSMD internal type aliases (untyped) ──────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -175,6 +176,8 @@ export async function parseWithOsmd(xmlUrl: string): Promise<OsmdParseResult> {
     document.body.appendChild(hiddenDiv)
 
     try {
+        const { xmlText, resolvedUrl } = await fetchMusicXmlText(xmlUrl)
+
         const osmd = new OSMD(hiddenDiv, {
             autoResize: false,
             drawTitle: false,
@@ -189,14 +192,14 @@ export async function parseWithOsmd(xmlUrl: string): Promise<OsmdParseResult> {
             renderSingleHorizontalStaffline: true,
         })
 
-        await osmd.load(xmlUrl)
+        await osmd.load(xmlText)
         osmd.render()
 
         const xmlEvents = extractXmlEvents(osmd)
         const intermediateScore = buildIntermediateScore(osmd)
         const totalMeasures = osmd.Sheet?.SourceMeasures?.length || 0
 
-        console.log(`[OsmdParser] Parsed ${totalMeasures} measures, ${xmlEvents.length} XML events, ${intermediateScore.measures.length} intermediate measures`)
+        console.log(`[OsmdParser] Parsed ${totalMeasures} measures, ${xmlEvents.length} XML events, ${intermediateScore.measures.length} intermediate measures from ${resolvedUrl}`)
 
         return { xmlEvents, intermediateScore, totalMeasures }
     } finally {

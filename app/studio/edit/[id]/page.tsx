@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Save, ArrowLeft, Music, FileMusic, FileAudio, SkipBack, Play, Pause, Square, FolderOpen, ChevronLeft, ChevronRight, Settings } from 'lucide-react'
+import { Save, ArrowLeft, Music, FileMusic, FileAudio, SkipBack, Play, Pause, Square, FolderOpen, ChevronLeft, ChevronRight, Settings, Activity, Piano } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { SplitScreenLayout } from '@/components/layout/SplitScreenLayout'
@@ -241,26 +241,6 @@ export default function AdminEditor() {
         })
     }, [setBeatAnchors])
 
-    const handleRegenerateBeats = useCallback(() => {
-        if (anchors.length < 2) return
-        const newBeats: BeatAnchor[] = []
-        const sortedAnchors = [...anchors].sort((a, b) => a.measure - b.measure)
-
-        for (let i = 0; i < sortedAnchors.length; i++) {
-            const currentA = sortedAnchors[i]
-            const nextA = (i + 1 < sortedAnchors.length) ? sortedAnchors[i + 1] : null
-            const beatsToGenerate = subdivision || 4
-
-            if (nextA) {
-                const dur = nextA.time - currentA.time
-                const timePerBeat = dur / beatsToGenerate
-                for (let b = 2; b <= beatsToGenerate; b++) {
-                    newBeats.push({ measure: currentA.measure, beat: b, time: currentA.time + (timePerBeat * (b - 1)) })
-                }
-            }
-        }
-        setBeatAnchors(newBeats)
-    }, [anchors, subdivision, setBeatAnchors])
 
     const handlePlayPause = async () => {
         const pm = getPlaybackManager()
@@ -484,14 +464,11 @@ export default function AdminEditor() {
                     currentMeasure={currentMeasure}
                     totalMeasures={totalMeasures || 100}
                     isLevel2Mode={isLevel2Mode}
-                    subdivision={subdivision}
                     darkMode={darkMode}
                     onSetAnchor={handleSetAnchor}
                     onDeleteAnchor={handleDeleteAnchor}
                     onSetBeatAnchor={handleSetBeatAnchor}
                     onToggleLevel2={setIsLevel2Mode}
-                    onSetSubdivision={setSubdivision}
-                    onRegenerateBeats={handleRegenerateBeats}
                     onTap={handleTap}
                     onClearAll={handleClearAll}
                     onAutoMap={handleAutoMap}
@@ -529,6 +506,30 @@ export default function AdminEditor() {
                         </div>
 
                         <div className="flex items-center gap-2">
+                            {/* View Quick Toggles */}
+                            <div className="flex items-center gap-1 bg-zinc-950/50 rounded-lg p-0.5 border border-zinc-800 mr-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowWaveformTimeline(!showWaveformTimeline)}
+                                    className={`h-7 px-2 flex items-center gap-1.5 text-[9px] uppercase font-bold tracking-wider transition-all ${showWaveformTimeline ? 'text-purple-400 bg-purple-500/10 shadow-[inset_0_0_10px_rgba(168,85,247,0.1)]' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                    title="Toggle Audio Waveform"
+                                >
+                                    <Activity className="w-3 h-3" />
+                                    <span>Waveform</span>
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowWaterfall(!showWaterfall)}
+                                    className={`h-7 px-2 flex items-center gap-1.5 text-[9px] uppercase font-bold tracking-wider transition-all ${showWaterfall ? 'text-amber-400 bg-amber-500/10 shadow-[inset_0_0_10px_rgba(245,158,11,0.1)]' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                    title="Toggle Falling Keys Mode"
+                                >
+                                    <Piano className="w-3 h-3" />
+                                    <span>Falling Keys</span>
+                                </Button>
+                            </div>
+
                             {/* Manage Files Dropdown */}
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -581,10 +582,10 @@ export default function AdminEditor() {
                                         MIDI Piano Roll
                                     </DropdownMenuCheckboxItem>
                                     <DropdownMenuCheckboxItem checked={showWaveformTimeline} onCheckedChange={setShowWaveformTimeline}>
-                                        Waveform Monitor
+                                        Audio Waveform
                                     </DropdownMenuCheckboxItem>
                                     <DropdownMenuCheckboxItem checked={showWaterfall} onCheckedChange={setShowWaterfall}>
-                                        Waterfall Display
+                                        Falling Keys Mode
                                     </DropdownMenuCheckboxItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>

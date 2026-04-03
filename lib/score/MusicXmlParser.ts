@@ -11,6 +11,7 @@ import type {
     IntermediateVoice,
     IntermediateNote,
 } from './IntermediateScore'
+import { fetchMusicXmlText } from './fetchMusicXml'
 
 // ─── Public API ────────────────────────────────────────────────────
 
@@ -19,8 +20,7 @@ import type {
  * Uses DOMParser — no OSMD, no hidden DOM, pure XML processing.
  */
 export async function parseMusicXml(xmlUrl: string): Promise<IntermediateScore> {
-    const response = await fetch(xmlUrl)
-    const xmlText = await response.text()
+    const { xmlText } = await fetchMusicXmlText(xmlUrl)
     return parseMusicXmlString(xmlText)
 }
 

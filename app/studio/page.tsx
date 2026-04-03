@@ -92,13 +92,13 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex items-center gap-3">
                         <Link href="/guide">
-                            <Button variant="outline" className="border-zinc-700 text-zinc-200 hover:bg-zinc-800">
+                            <Button variant="outline" className="bg-white text-black border-white hover:bg-zinc-200 font-outfit">
                                 Guide
                             </Button>
                         </Link>
                         <Button
                             onClick={handleCreate}
-                            className="bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-600/20"
+                            className="bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-600/20 font-outfit"
                         >
                             <Plus className="w-4 h-4 mr-2" />
                             New Configuration
@@ -118,7 +118,7 @@ export default function AdminDashboard() {
                         <p className="text-red-400 font-medium">{error}</p>
                         {error?.toLowerCase().includes('unauthorized') || error?.toLowerCase().includes('auth') ? (
                             <Link href="/login">
-                                <Button className="bg-purple-600 hover:bg-purple-700 text-white mt-6">
+                                <Button className="bg-purple-600 hover:bg-purple-700 text-white mt-6 font-outfit">
                                     Sign In to Studio
                                 </Button>
                             </Link>
@@ -132,13 +132,13 @@ export default function AdminDashboard() {
                         <p className="text-zinc-400 text-lg">No configurations yet</p>
                         <p className="text-zinc-500 text-sm">Create your first song configuration to get started.</p>
                         <Link href="/guide" className="block">
-                            <Button variant="outline" className="border-zinc-700 text-zinc-200 hover:bg-zinc-800">
+                            <Button variant="outline" className="bg-white text-black border-white hover:bg-zinc-200 font-outfit">
                                 Read step-by-step setup
                             </Button>
                         </Link>
                         <Button
                             onClick={handleCreate}
-                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                            className="bg-purple-600 hover:bg-purple-700 text-white font-outfit"
                         >
                             <Plus className="w-4 h-4 mr-2" />
                             Create First Configuration
@@ -181,7 +181,7 @@ export default function AdminDashboard() {
                                 {/* Publish status */}
                                 <button
                                     onClick={() => handleTogglePublish(config.id, !!config.is_published)}
-                                    className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full w-fit transition-colors ${config.is_published
+                                    className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full w-fit transition-colors font-outfit ${config.is_published
                                         ? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
                                         : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
                                         }`}
@@ -193,14 +193,14 @@ export default function AdminDashboard() {
                                 {/* Actions */}
                                 <div className="flex items-center justify-end gap-1">
                                     <Link href={`/studio/edit/${config.id}`}>
-                                        <Button variant="ghost" size="sm" className="h-7 px-2 text-zinc-400 hover:text-white">
+                                        <Button variant="ghost" size="sm" className="h-7 px-2 text-zinc-400 hover:text-white font-outfit">
                                             Edit
                                         </Button>
                                     </Link>
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-7 w-7 p-0 text-zinc-400 hover:text-red-400"
+                                        className="h-7 w-7 p-0 text-zinc-400 hover:text-red-400 font-outfit"
                                         onClick={() => handleDelete(config.id)}
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />

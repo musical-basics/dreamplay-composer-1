@@ -20,14 +20,11 @@ interface AnchorSidebarProps {
     currentMeasure: number
     totalMeasures: number
     isLevel2Mode: boolean
-    subdivision: number
     darkMode?: boolean
     onSetAnchor: (measure: number, time: number) => void
     onDeleteAnchor: (measure: number) => void
     onToggleLevel2: (enabled: boolean) => void
-    onSetSubdivision: (sub: number) => void
     onSetBeatAnchor?: (measure: number, beat: number, time: number) => void
-    onRegenerateBeats?: () => void
     onTap?: () => void
     onClearAll?: () => void
     onAutoMap?: (chordThresholdFraction: number) => void
@@ -45,14 +42,11 @@ export const AnchorSidebar: React.FC<AnchorSidebarProps> = ({
     currentMeasure,
     totalMeasures,
     isLevel2Mode,
-    subdivision,
     darkMode = false,
     onSetAnchor,
     onDeleteAnchor,
     onToggleLevel2,
-    onSetSubdivision,
     onSetBeatAnchor,
-    onRegenerateBeats,
     onTap,
     onClearAll,
     onAutoMap,
@@ -160,37 +154,9 @@ export const AnchorSidebar: React.FC<AnchorSidebarProps> = ({
                                 htmlFor="l2-mode"
                                 className="text-xs font-medium leading-none cursor-pointer text-zinc-300"
                             >
-                                Beat-level mapping (L2)
+                                View Beat-level mapping (L2)
                             </Label>
                         </div>
-
-                        {isLevel2Mode && (
-                            <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <div className="flex items-center justify-between gap-2 px-1">
-                                    <span className="text-[10px] uppercase font-bold text-zinc-500">Subdivision</span>
-                                    <select
-                                        value={subdivision}
-                                        onChange={(e) => onSetSubdivision(Number(e.target.value))}
-                                        className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-zinc-100 border-zinc-300'} border focus:outline-none focus:ring-1 focus:ring-purple-500/50`}
-                                    >
-                                        {[2, 3, 4, 6, 8, 12, 16].map((n) => (
-                                            <option key={n} value={n}>{n}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                {onRegenerateBeats && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={onRegenerateBeats}
-                                        className="w-full text-[10px] font-bold h-8 border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10"
-                                    >
-                                        <Layers className="w-3 h-3 mr-1.5" />
-                                        {beatAnchors.length > 0 ? '↻ Regenerate Beats' : '▶ Generate Beats'}
-                                    </Button>
-                                )}
-                            </div>
-                        )}
 
                         <div className="h-px bg-zinc-800 my-2" />
 

@@ -21,6 +21,7 @@ export function UploadWizard({
     onUploadMidi
 }: UploadWizardProps) {
     const [uploading, setUploading] = useState<string | null>(null)
+    const [lastUploadStatus, setLastUploadStatus] = useState<string | null>(null)
 
     // Determine current step based on config
     const hasAudio = !!config.audio_url
@@ -43,6 +44,8 @@ export function UploadWizard({
             if (type === 'audio') await onUploadAudio(file)
             if (type === 'xml') await onUploadXml(file)
             if (type === 'midi') await onUploadMidi(file)
+            setLastUploadStatus(type)
+            setTimeout(() => setLastUploadStatus(null), 3000)
         } catch (err) {
             console.error(`Upload failed for ${type}:`, err)
         } finally {
@@ -61,7 +64,17 @@ export function UploadWizard({
     }
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-2xl mx-auto w-full p-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-2xl mx-auto w-full p-8 relative">
+            {/* Temporary Success Banner */}
+            {lastUploadStatus && (
+                <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="bg-green-600 text-white px-6 py-2.5 rounded-full shadow-xl shadow-green-500/20 flex items-center gap-2 font-bold border border-green-400/20">
+                        <CheckCircle2 className="w-5 h-5" />
+                        <span>Success! {lastUploadStatus === 'audio' ? 'Master Audio' : lastUploadStatus === 'xml' ? 'Sheet Music' : 'Performance MIDI'} Uploaded</span>
+                    </div>
+                </div>
+            )}
+
             <div className="w-full mb-12 text-center">
                 <h2 className="text-3xl font-bold text-white mb-2">Configure Your Song</h2>
                 <p className="text-zinc-400">Follow the steps below to prepare your sheet music and audio.</p>
@@ -84,8 +97,21 @@ export function UploadWizard({
                         <div className="flex items-start gap-4">
                             <StepIcon step={1} active={currentStep === 1} completed={hasAudio} />
                             <div className="flex-1">
-                                <h3 className="text-lg font-semibold text-white mb-1">Master Audio (WAV/MP3)</h3>
+                                <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                                    Master Audio (WAV/MP3)
+                                    {hasAudio && (
+                                        <span className="text-[10px] bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded font-bold uppercase animate-in fade-in zoom-in duration-500">
+                                            Success!
+                                        </span>
+                                    )}
+                                </h3>
                                 <p className="text-sm text-zinc-400 mb-4">Upload the primary audio file that will be mapped and synced.</p>
+                                {hasAudio && (
+                                    <p className="text-xs text-green-500/80 font-medium mb-4 flex items-center gap-1.5 animate-in slide-in-from-left-2 duration-300">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Audio file successfully uploaded and ready.
+                                    </p>
+                                )}
                                 
                                 {currentStep === 1 && (
                                     <div className="relative">
@@ -117,8 +143,21 @@ export function UploadWizard({
                         <div className="flex items-start gap-4">
                             <StepIcon step={2} active={currentStep === 2} completed={hasXml} />
                             <div className="flex-1">
-                                <h3 className="text-lg font-semibold text-white mb-1">Sheet Music (MusicXML)</h3>
+                                <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                                    Sheet Music (MusicXML)
+                                    {hasXml && (
+                                        <span className="text-[10px] bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded font-bold uppercase animate-in fade-in zoom-in duration-500">
+                                            Success!
+                                        </span>
+                                    )}
+                                </h3>
                                 <p className="text-sm text-zinc-400 mb-4">Upload the XML file exported from Sibelius, Finale, or MuseScore.</p>
+                                {hasXml && (
+                                    <p className="text-xs text-green-500/80 font-medium mb-4 flex items-center gap-1.5 animate-in slide-in-from-left-2 duration-300">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Sheet music successfully uploaded and ready.
+                                    </p>
+                                )}
                                 
                                 {currentStep === 2 && (
                                     <div className="relative">
@@ -150,8 +189,21 @@ export function UploadWizard({
                         <div className="flex items-start gap-4">
                             <StepIcon step={3} active={currentStep === 3} completed={hasMidi} />
                             <div className="flex-1">
-                                <h3 className="text-lg font-semibold text-white mb-1">Performance (MIDI)</h3>
+                                <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                                    Performance (MIDI)
+                                    {hasMidi && (
+                                        <span className="text-[10px] bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded font-bold uppercase animate-in fade-in zoom-in duration-500">
+                                            Success!
+                                        </span>
+                                    )}
+                                </h3>
                                 <p className="text-sm text-zinc-400 mb-4">Upload the MIDI file corresponding to the performance.</p>
+                                {hasMidi && (
+                                    <p className="text-xs text-green-500/80 font-medium mb-4 flex items-center gap-1.5 animate-in slide-in-from-left-2 duration-300">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Performance MIDI successfully uploaded and ready.
+                                    </p>
+                                )}
                                 
                                 {currentStep === 3 && (
                                     <div className="relative">
