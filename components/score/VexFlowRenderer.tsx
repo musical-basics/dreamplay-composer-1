@@ -239,8 +239,8 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
             // End barline connector
             new StaveConnector(trebleStave, bassStave).setType('singleRight').setContext(context).draw()
 
-            // Record measure X position
-            measureXMap.set(measureNumber, trebleStave.getX() + trebleStave.getNoteStartX() - trebleStave.getX())
+            // Record measure X position (absolute stave X — used by ScrollView for measure markers)
+            measureXMap.set(measureNumber, x)
 
             // ── Create notes for each staff ──
             const staveMap: { [staffIdx: number]: Stave } = {
