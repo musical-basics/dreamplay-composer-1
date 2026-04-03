@@ -8,7 +8,7 @@
 
 import * as React from 'react'
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { VexFlow, fontsReady } from 'dreamflow'
+import { VexFlow } from 'dreamflow'
 import {
     Renderer,
     Stave,
@@ -56,29 +56,44 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
     const [isRendered, setIsRendered] = useState(false)
     const [fontsLoaded, setFontsLoaded] = useState(false)
 
-    // Wait for dreamflow's bundled fonts (loaded from base64 data URIs at module init).
-    // The entry point's Font.load() is fire-and-forget — we await the exported `fontsReady`
-    // promise to ensure fonts are actually in document.fonts before rendering.
+    // Wait for dreamflow's bundled fonts (base64 data URIs loaded at module init).
+    // We poll document.fonts directly — document.fonts.check() can give false positives
+    // (returns true when NO matching FontFace exists), so we iterate the FontFaceSet.
     useEffect(() => {
         const ensureFonts = async () => {
-            console.log('[FONT DEBUG] Awaiting dreamflow fontsReady promise...')
-            await fontsReady
+            console.log('[FONT DEBUG] Waiting for music fonts in document.fonts...')
+            const requiredFonts = ['Bravura', 'Gonville', 'Petaluma', 'Academico']
+            const maxWait = 5000
+            const start = Date.now()
 
-            // Verify fonts are actually in document.fonts (not just vacuous check() = true).
-            // Iterate the FontFaceSet to confirm Bravura exists as a loaded FontFace.
+            // Poll until required fonts appear as loaded FontFace entries.
+            // The entry point's Font.load() adds them asynchronously from base64.
+            while (Date.now() - start < maxWait) {
+                await document.fonts.ready
+                const fontFaces = [...document.fonts]
+                const allReady = requiredFonts.every(name =>
+                    fontFaces.some(ff => ff.family === name && ff.status === 'loaded')
+                )
+                if (allReady) {
+                    console.log('[FONT DEBUG] All fonts confirmed in document.fonts:',
+                        [...new Set(fontFaces.map(ff => ff.family))].join(', '))
+                    setFontsLoaded(true)
+                    return
+                }
+                await new Promise(r => setTimeout(r, 50))
+            }
+
+            // Fallback: entry-point fonts didn't appear — load from CDN
             const fontFaces = [...document.fonts]
-            const bravuraFace = fontFaces.find(ff => ff.family === 'Bravura' && ff.status === 'loaded')
-            console.log('[FONT DEBUG] fontsReady resolved. Bravura FontFace:', bravuraFace ? 'FOUND' : 'MISSING',
-                '| Total FontFaces:', fontFaces.length,
-                '| Families:', [...new Set(fontFaces.map(ff => ff.family))].join(', '))
-
-            if (!bravuraFace) {
-                // Entry point fonts didn't load — fallback to CDN
-                console.warn('[FONT DEBUG] Bravura not in document.fonts, loading from CDN...')
+            const present = requiredFonts.filter(name => fontFaces.some(ff => ff.family === name))
+            const missing = requiredFonts.filter(name => !fontFaces.some(ff => ff.family === name))
+            console.warn('[FONT DEBUG] Timeout. Present:', present.join(', '), '| Missing:', missing.join(', '))
+            if (missing.length > 0) {
+                console.log('[FONT DEBUG] Loading missing fonts from CDN...')
                 try {
-                    await VexFlow.loadFonts('Bravura', 'Gonville', 'Petaluma', 'Academico')
+                    await VexFlow.loadFonts(...missing)
                 } catch (err: unknown) {
-                    console.warn('[DREAMFLOW] CDN font loading also failed', err)
+                    console.warn('[DREAMFLOW] CDN font loading failed', err)
                 }
             }
             setFontsLoaded(true)
