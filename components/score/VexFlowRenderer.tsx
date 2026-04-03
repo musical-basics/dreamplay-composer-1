@@ -28,7 +28,7 @@ import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import {
     STAVE_WIDTH, STAVE_Y_TREBLE, STAVE_SPACING, LEFT_MARGIN, SYSTEM_HEIGHT,
     createStaveNote, isBeamable, addArticulation, detectHeuristicTuplets,
-    attachGraceNotes, processSlurs,
+    attachGraceNotes, processSlurs, durationToBeats,
     type NoteData, type VexFlowRenderResult, type TupletData, type ActiveSlurs,
 } from './VexFlowHelpers'
 
@@ -267,8 +267,24 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                         : undefined
 
                     const vfNotes: StaveNote[] = []
+
+                    // ── Beam group window ──
+                    // Standard rule: a beam group contains exactly 4 note-heads of the shortest
+                    // beamable duration in this voice. Pre-scan to find the minimum duration,
+                    // then derive the beat-window. Examples in 4/4:
+                    //   All 8th notes  → minDur = 0.5 beats → window = 4×0.5 = 2 beats (half-bar)
+                    //   All 16th notes → minDur = 0.25 beats → window = 4×0.25 = 1 beat (per-beat)
+                    //   Mixed 8th+16th → minDur = 0.25 beats → window = 1 beat
+                    // Clamp to [0.25, 2] so we don't generate unreasonably large/small groups.
+                    const beamableNotesList = voice.notes.filter(n => !n.isRest && isBeamable(n.duration))
+                    const minDurBeats = beamableNotesList.reduce(
+                        (min, n) => Math.min(min, durationToBeats(n.duration)),
+                        Infinity
+                    )
+                    // window = 4 notes wide, clamped to [0.25, 2]
+                    const beamGroupBeats = Math.min(Math.max(4 * (isFinite(minDurBeats) ? minDurBeats : 0.5), 0.25), 2)
+
                     // Track beamable notes with their beat position so we can split at beat boundaries.
-                    // Using beat-aware grouping rather than VexFlow's fraction groups gives exact control.
                     const beamableWithBeat: Array<{ note: StaveNote; beatFloor: number }> = []
 
                     for (const note of voice.notes) {
@@ -321,10 +337,11 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                             currentTupletNotes = null
                         }
 
-                        // Collect beamable notes with beat position for exact beat-boundary splitting
+                        // Collect beamable notes; compute which beam bucket this note falls into.
+                        // Bucket key = floor((beat - 1) / beamGroupBeats), so notes within the
+                        // same beam-group window share the same bucket regardless of sub-beat position.
                         if (!note.isRest && isBeamable(note.duration)) {
-                            // note.beat is 1-based; floor(beat - 1) gives 0-based beat index
-                            const beatFloor = Math.floor(note.beat - 0.001)
+                            const beatFloor = Math.floor((note.beat - 1) / beamGroupBeats)
                             beamableWithBeat.push({ note: staveNote, beatFloor })
                         }
 
