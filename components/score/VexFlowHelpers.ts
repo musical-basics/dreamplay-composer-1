@@ -66,6 +66,7 @@ export type NoteData = {
 
 export interface VexFlowRenderResult {
     measureXMap: Map<number, number>
+    measureWidthMap: Map<number, number>
     beatXMap: Map<number, Map<number, number>>
     noteMap: Map<number, NoteData[]>
     systemYMap: { top: number; height: number }

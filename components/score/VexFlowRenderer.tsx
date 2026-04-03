@@ -143,6 +143,7 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
 
         // Track state for rendering
         const measureXMap = new Map<number, number>()
+        const measureWidthMap = new Map<number, number>()
         const beatXMap = new Map<number, Map<number, number>>()
         const allNoteData = new Map<number, NoteData[]>()
 
@@ -239,8 +240,9 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
             // End barline connector
             new StaveConnector(trebleStave, bassStave).setType('singleRight').setContext(context).draw()
 
-            // Record measure X position (absolute stave X — used by ScrollView for measure markers)
+            // Record measure X position and width (used by ScrollView + audit cropper)
             measureXMap.set(measureNumber, x)
+            measureWidthMap.set(measureNumber, staveWidth)
 
             // ── Create notes for each staff ──
             const staveMap: { [staffIdx: number]: Stave } = {
@@ -758,6 +760,7 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
 
                 onRenderComplete({
                     measureXMap,
+                    measureWidthMap,
                     beatXMap,
                     noteMap: allNoteData,
                     systemYMap,

@@ -3,14 +3,20 @@
 import * as React from 'react'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Upload, Camera, Loader2, AlertTriangle, CheckCircle, Info, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+    ArrowLeft, Upload, Loader2, AlertTriangle, CheckCircle, Info, XCircle,
+    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, SkipForward, Check,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { parseMusicXml } from '@/lib/score/MusicXmlParser'
 import type { IntermediateScore } from '@/lib/score/IntermediateScore'
-import { VexFlowRenderer } from '@/components/score/VexFlowRenderer'
+import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
+import { cropMeasure } from '@/components/score/measureCropper'
 import { fetchConfigById } from '@/app/actions/config'
 import { runScoreAudit, fetchAvailableModels, type AuditFinding, type AuditResult } from '@/app/actions/scoreAudit'
 import type { SongConfig } from '@/lib/types'
+
+type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
 
 const SEVERITY_CONFIG = {
     critical: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', label: 'Critical' },
@@ -19,47 +25,56 @@ const SEVERITY_CONFIG = {
     cosmetic: { icon: CheckCircle, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', label: 'Cosmetic' },
 } as const
 
+const STATUS_COLORS: Record<MeasureStatus, string> = {
+    pending: 'border-zinc-600 hover:border-zinc-400',
+    auditing: 'border-purple-500 bg-purple-500/10 animate-pulse',
+    pass: 'border-green-500/50 bg-green-500/10',
+    fail: 'border-red-500/50 bg-red-500/10',
+    skipped: 'border-zinc-700 bg-zinc-800/50 opacity-60',
+}
+
 export default function ScoreAuditPage() {
     const params = useParams()
     const router = useRouter()
     const configId = params?.id as string
 
+    // Data
     const [config, setConfig] = useState<SongConfig | null>(null)
     const [score, setScore] = useState<IntermediateScore | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    // Reference image
-    const [referenceImage, setReferenceImage] = useState<string | null>(null)
-    const [referenceFileName, setReferenceFileName] = useState<string>('')
-    const fileInputRef = useRef<HTMLInputElement>(null)
-
-    // Rendered image capture
-    const [renderedImage, setRenderedImage] = useState<string | null>(null)
-    const [capturing, setCapturing] = useState(false)
+    // Render result from VexFlow
+    const [renderResult, setRenderResult] = useState<VexFlowRenderResult | null>(null)
     const vexflowContainerRef = useRef<HTMLDivElement>(null)
 
+    // Measure block state
+    const [selectedMeasure, setSelectedMeasure] = useState<number | null>(null)
+    const [measureStatuses, setMeasureStatuses] = useState<Map<number, MeasureStatus>>(new Map())
+    const [measureResults, setMeasureResults] = useState<Map<number, AuditResult>>(new Map())
+    const [referenceImages, setReferenceImages] = useState<Map<number, string>>(new Map())
+    const [croppedRenders, setCroppedRenders] = useState<Map<number, string>>(new Map())
+
     // Audit state
-    const [auditing, setAuditing] = useState(false)
-    const [auditResult, setAuditResult] = useState<AuditResult | null>(null)
     const [auditError, setAuditError] = useState<string | null>(null)
 
     // Model selection
     const [models, setModels] = useState<{ id: string; name: string }[]>([])
     const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4-20250514')
 
-    // Collapsible sections
-    const [showFindings, setShowFindings] = useState(true)
+    // Expanded findings
     const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set())
 
-    // Load config and parse score
+    // File input ref (per-measure)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    // ── Load config + parse score ──
     useEffect(() => {
         async function load() {
             try {
                 const cfg = await fetchConfigById(configId)
                 if (!cfg) { setError('Config not found'); return }
                 setConfig(cfg)
-
                 if (cfg.xml_url) {
                     const parsed = await parseMusicXml(cfg.xml_url)
                     setScore(parsed)
@@ -83,66 +98,116 @@ export default function ScoreAuditPage() {
         })
     }, [])
 
-    // Handle reference image upload
+    // ── Handle render complete — store result ──
+    const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
+        setRenderResult(result)
+    }, [])
+
+    // ── Auto-crop when a measure is selected ──
+    useEffect(() => {
+        if (!selectedMeasure || !renderResult || croppedRenders.has(selectedMeasure)) return
+
+        const svgEl = vexflowContainerRef.current?.querySelector('svg') as SVGSVGElement | null
+        if (!svgEl) return
+
+        const x = renderResult.measureXMap.get(selectedMeasure)
+        const w = renderResult.measureWidthMap.get(selectedMeasure)
+        if (x === undefined || w === undefined) return
+
+        cropMeasure(svgEl, x, w, renderResult.systemYMap).then(png => {
+            setCroppedRenders(prev => new Map(prev).set(selectedMeasure, png))
+        }).catch(err => {
+            console.error('Crop failed:', err)
+        })
+    }, [selectedMeasure, renderResult, croppedRenders])
+
+    // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
-        if (!file) return
+        if (!file || !selectedMeasure) return
 
-        setReferenceFileName(file.name)
         const reader = new FileReader()
         reader.onload = () => {
-            setReferenceImage(reader.result as string)
+            setReferenceImages(prev => new Map(prev).set(selectedMeasure, reader.result as string))
         }
         reader.readAsDataURL(file)
-    }, [])
+        // Reset input so same file can be re-uploaded
+        if (fileInputRef.current) fileInputRef.current.value = ''
+    }, [selectedMeasure])
 
-    // Capture VexFlow render as image
-    const captureRender = useCallback(async () => {
-        const container = vexflowContainerRef.current
-        if (!container) return
-
-        setCapturing(true)
-        try {
-            // Dynamic import to avoid SSR issues
-            const { default: html2canvas } = await import('html2canvas-pro')
-            const canvas = await html2canvas(container, {
-                backgroundColor: '#ffffff',
-                scale: 2,
-                useCORS: true,
-            })
-            setRenderedImage(canvas.toDataURL('image/png'))
-        } catch (e) {
-            console.error('Capture failed:', e)
-            setAuditError('Failed to capture VexFlow render')
-        } finally {
-            setCapturing(false)
-        }
-    }, [])
-
-    // Run audit
+    // ── Run audit for selected measure ──
     const handleRunAudit = useCallback(async () => {
-        if (!referenceImage || !renderedImage) return
+        if (!selectedMeasure) return
+        const ref = referenceImages.get(selectedMeasure)
+        const rendered = croppedRenders.get(selectedMeasure)
+        if (!ref || !rendered) return
 
-        setAuditing(true)
         setAuditError(null)
-        setAuditResult(null)
+        setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'auditing'))
 
         try {
-            const result = await runScoreAudit(
-                referenceImage,
-                renderedImage,
-                selectedModel,
-            )
-            setAuditResult(result)
-            setShowFindings(true)
-            // Expand all findings by default
+            const result = await runScoreAudit(ref, rendered, selectedModel, {
+                start: selectedMeasure,
+                end: selectedMeasure,
+            })
+            setMeasureResults(prev => new Map(prev).set(selectedMeasure, result))
+            setMeasureStatuses(prev => new Map(prev).set(
+                selectedMeasure,
+                result.findings.length === 0 ? 'pass' : 'fail',
+            ))
             setExpandedFindings(new Set(result.findings.map(f => f.id)))
         } catch (e) {
             setAuditError(e instanceof Error ? e.message : 'Audit failed')
-        } finally {
-            setAuditing(false)
+            setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pending'))
         }
-    }, [referenceImage, renderedImage, selectedModel])
+    }, [selectedMeasure, referenceImages, croppedRenders, selectedModel])
+
+    // ── Mark as OK / Skip ──
+    const markAsPass = useCallback(() => {
+        if (!selectedMeasure) return
+        setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pass'))
+    }, [selectedMeasure])
+
+    const markAsSkipped = useCallback(() => {
+        if (!selectedMeasure) return
+        setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'skipped'))
+    }, [selectedMeasure])
+
+    // ── Navigation ──
+    const measureCount = renderResult?.measureCount ?? score?.measures.length ?? 0
+    const goToMeasure = useCallback((m: number) => {
+        if (m >= 1 && m <= measureCount) setSelectedMeasure(m)
+    }, [measureCount])
+
+    const goNext = useCallback(() => {
+        if (selectedMeasure && selectedMeasure < measureCount) goToMeasure(selectedMeasure + 1)
+    }, [selectedMeasure, measureCount, goToMeasure])
+
+    const goPrev = useCallback(() => {
+        if (selectedMeasure && selectedMeasure > 1) goToMeasure(selectedMeasure - 1)
+    }, [selectedMeasure, goToMeasure])
+
+    // ── Keyboard shortcuts ──
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
+            if (e.key === 'ArrowRight') goNext()
+            else if (e.key === 'ArrowLeft') goPrev()
+            else if (e.key === 'Enter' && !e.shiftKey) handleRunAudit()
+            else if (e.key === 'o' || e.key === 'O') markAsPass()
+            else if (e.key === 's' && !e.metaKey && !e.ctrlKey) markAsSkipped()
+        }
+        window.addEventListener('keydown', handler)
+        return () => window.removeEventListener('keydown', handler)
+    }, [goNext, goPrev, handleRunAudit, markAsPass, markAsSkipped])
+
+    // ── Progress stats ──
+    const stats = {
+        pass: [...measureStatuses.values()].filter(s => s === 'pass').length,
+        fail: [...measureStatuses.values()].filter(s => s === 'fail').length,
+        skipped: [...measureStatuses.values()].filter(s => s === 'skipped').length,
+    }
+    const reviewed = stats.pass + stats.fail + stats.skipped
 
     const toggleFinding = (id: string) => {
         setExpandedFindings(prev => {
@@ -152,6 +217,12 @@ export default function ScoreAuditPage() {
             return next
         })
     }
+
+    // Current measure data
+    const currentRef = selectedMeasure ? referenceImages.get(selectedMeasure) : null
+    const currentCrop = selectedMeasure ? croppedRenders.get(selectedMeasure) : null
+    const currentResult = selectedMeasure ? measureResults.get(selectedMeasure) : null
+    const currentStatus = selectedMeasure ? (measureStatuses.get(selectedMeasure) ?? 'pending') : 'pending'
 
     if (loading) {
         return (
@@ -171,9 +242,9 @@ export default function ScoreAuditPage() {
     }
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-white">
-            {/* Header */}
-            <div className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+        <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+            {/* ── Header ── */}
+            <div className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" onClick={() => router.back()}>
                         <ArrowLeft className="w-5 h-5" />
@@ -184,220 +255,263 @@ export default function ScoreAuditPage() {
                     </div>
                 </div>
 
-                {/* Model selector */}
-                <div className="flex items-center gap-3">
-                    <label className="text-sm text-zinc-400">Model:</label>
-                    <select
-                        value={selectedModel}
-                        onChange={e => setSelectedModel(e.target.value)}
-                        className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-sm"
-                    >
-                        {models.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                    </select>
+                <div className="flex items-center gap-6">
+                    {/* Progress */}
+                    {measureCount > 0 && (
+                        <div className="flex items-center gap-3 text-xs text-zinc-400">
+                            <span className="text-green-400">{stats.pass} pass</span>
+                            <span className="text-red-400">{stats.fail} fail</span>
+                            <span className="text-zinc-500">{stats.skipped} skip</span>
+                            <span>{reviewed}/{measureCount}</span>
+                            <div className="w-32 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-green-500 transition-all"
+                                    style={{ width: `${measureCount > 0 ? (reviewed / measureCount) * 100 : 0}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Model selector */}
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs text-zinc-500">Model:</label>
+                        <select
+                            value={selectedModel}
+                            onChange={e => setSelectedModel(e.target.value)}
+                            className="bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs"
+                        >
+                            {models.map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            <div className="p-6 space-y-6">
-                {/* Step 1 + 2: Side by side image panels */}
-                <div className="grid grid-cols-2 gap-6">
-                    {/* Reference Panel */}
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wide">
-                                1. Reference (Correct)
-                            </h2>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <Upload className="w-4 h-4 mr-2" />
-                                {referenceImage ? 'Replace' : 'Upload'}
-                            </Button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*,.pdf"
-                                className="hidden"
-                                onChange={handleReferenceUpload}
-                            />
-                        </div>
-                        <div className="border border-zinc-700 rounded-lg bg-zinc-900 min-h-[300px] flex items-center justify-center overflow-auto">
-                            {referenceImage ? (
-                                <img
-                                    src={referenceImage}
-                                    alt="Reference score"
-                                    className="max-w-full"
-                                />
-                            ) : (
-                                <div className="text-center text-zinc-500 p-8">
-                                    <Upload className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                                    <p className="text-sm">Upload a reference image or PDF</p>
-                                    <p className="text-xs text-zinc-600 mt-1">Screenshot from Sibelius, IMSLP, Henle, etc.</p>
-                                </div>
-                            )}
-                        </div>
-                        {referenceFileName && (
-                            <p className="text-xs text-zinc-500">{referenceFileName}</p>
-                        )}
-                    </div>
-
-                    {/* Rendered Panel */}
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wide">
-                                2. VexFlow Render
-                            </h2>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={captureRender}
-                                disabled={!score || capturing}
-                            >
-                                {capturing ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Camera className="w-4 h-4 mr-2" />
-                                )}
-                                {renderedImage ? 'Re-capture' : 'Capture'}
-                            </Button>
-                        </div>
-                        <div className="border border-zinc-700 rounded-lg bg-zinc-900 min-h-[300px] overflow-auto">
-                            {renderedImage ? (
-                                <img
-                                    src={renderedImage}
-                                    alt="VexFlow render"
-                                    className="max-w-full"
-                                />
-                            ) : (
-                                <div className="text-zinc-500 text-center p-4 text-sm">
-                                    Click &quot;Capture&quot; to screenshot the render below
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Run Audit Button */}
-                <div className="flex items-center gap-4">
-                    <Button
-                        onClick={handleRunAudit}
-                        disabled={!referenceImage || !renderedImage || auditing}
-                        className="bg-purple-600 hover:bg-purple-700"
-                        size="lg"
-                    >
-                        {auditing ? (
-                            <>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Analyzing...
-                            </>
-                        ) : (
-                            'Run Score Audit'
-                        )}
-                    </Button>
-                    {!referenceImage && <span className="text-sm text-zinc-500">Upload a reference image first</span>}
-                    {referenceImage && !renderedImage && <span className="text-sm text-zinc-500">Capture the VexFlow render first</span>}
-                </div>
-
-                {auditError && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
-                        {auditError}
-                    </div>
-                )}
-
-                {/* Audit Results */}
-                {auditResult && (
-                    <div className="space-y-4">
-                        {/* Summary */}
-                        <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-medium">Audit Summary</h3>
-                                <span className="text-xs text-zinc-500">Model: {auditResult.modelUsed}</span>
-                            </div>
-                            <p className="text-sm text-zinc-300">{auditResult.summary}</p>
-                            <div className="flex gap-4 mt-3 text-xs">
-                                {(['critical', 'major', 'minor', 'cosmetic'] as const).map(sev => {
-                                    const count = auditResult.findings.filter(f => f.severity === sev).length
-                                    if (count === 0) return null
-                                    const cfg = SEVERITY_CONFIG[sev]
-                                    return (
-                                        <span key={sev} className={`${cfg.color} flex items-center gap-1`}>
-                                            <cfg.icon className="w-3.5 h-3.5" />
-                                            {count} {cfg.label}
-                                        </span>
-                                    )
-                                })}
-                                {auditResult.findings.length === 0 && (
-                                    <span className="text-green-400 flex items-center gap-1">
-                                        <CheckCircle className="w-3.5 h-3.5" /> No issues found
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Findings List */}
-                        {auditResult.findings.length > 0 && (
-                            <div className="space-y-2">
+            <div className="flex flex-1 overflow-hidden">
+                {/* ── Left: Score with clickable measure blocks ── */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* Measure block strip */}
+                    <div className="border-b border-zinc-800 px-4 py-2 flex items-center gap-1 overflow-x-auto shrink-0">
+                        {Array.from({ length: measureCount }, (_, i) => i + 1).map(m => {
+                            const status = measureStatuses.get(m) ?? 'pending'
+                            const isSelected = m === selectedMeasure
+                            return (
                                 <button
-                                    onClick={() => setShowFindings(!showFindings)}
-                                    className="flex items-center gap-2 text-sm font-medium text-zinc-300 hover:text-white"
+                                    key={m}
+                                    onClick={() => setSelectedMeasure(m)}
+                                    className={`
+                                        shrink-0 w-10 h-8 rounded text-xs font-mono border transition-all
+                                        ${STATUS_COLORS[status]}
+                                        ${isSelected ? 'ring-2 ring-purple-500 ring-offset-1 ring-offset-zinc-950' : ''}
+                                    `}
                                 >
-                                    {showFindings ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                    Findings ({auditResult.findings.length})
+                                    {m}
                                 </button>
+                            )
+                        })}
+                    </div>
 
-                                {showFindings && (
-                                    <div className="space-y-2">
-                                        {auditResult.findings.map(finding => {
-                                            const cfg = SEVERITY_CONFIG[finding.severity]
-                                            const expanded = expandedFindings.has(finding.id)
-
+                    {/* VexFlow render with overlay */}
+                    <div className="flex-1 overflow-auto relative" ref={vexflowContainerRef}>
+                        {score ? (
+                            <div className="relative">
+                                <VexFlowRenderer
+                                    score={score}
+                                    musicFont="Bravura"
+                                    onRenderComplete={handleRenderComplete}
+                                />
+                                {/* Clickable measure overlay */}
+                                {renderResult && (
+                                    <div className="absolute inset-0 pointer-events-none">
+                                        {Array.from({ length: measureCount }, (_, i) => i + 1).map(m => {
+                                            const x = renderResult.measureXMap.get(m)
+                                            const w = renderResult.measureWidthMap.get(m)
+                                            if (x === undefined || w === undefined) return null
+                                            const status = measureStatuses.get(m) ?? 'pending'
+                                            const isSelected = m === selectedMeasure
                                             return (
                                                 <div
-                                                    key={finding.id}
-                                                    className={`border rounded-lg ${cfg.bg} overflow-hidden`}
-                                                >
+                                                    key={m}
+                                                    className={`absolute pointer-events-auto cursor-pointer transition-all border-2 rounded-sm
+                                                        ${isSelected ? 'border-purple-500 bg-purple-500/10' : ''}
+                                                        ${!isSelected && status === 'pass' ? 'border-green-500/30 bg-green-500/5' : ''}
+                                                        ${!isSelected && status === 'fail' ? 'border-red-500/30 bg-red-500/5' : ''}
+                                                        ${!isSelected && status === 'pending' ? 'border-transparent hover:border-zinc-400/30 hover:bg-zinc-500/5' : ''}
+                                                        ${!isSelected && status === 'skipped' ? 'border-zinc-700/30 bg-zinc-800/10' : ''}
+                                                    `}
+                                                    style={{
+                                                        left: x,
+                                                        top: renderResult.systemYMap.top,
+                                                        width: w,
+                                                        height: renderResult.systemYMap.height,
+                                                    }}
+                                                    onClick={() => setSelectedMeasure(m)}
+                                                />
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-zinc-500 text-center p-8">
+                                No score loaded — upload a MusicXML file in the editor first
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── Right: Measure detail panel ── */}
+                <div className="w-[440px] border-l border-zinc-800 flex flex-col overflow-hidden shrink-0">
+                    {selectedMeasure ? (
+                        <>
+                            {/* Panel header */}
+                            <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goPrev} disabled={selectedMeasure <= 1}>
+                                        <ChevronLeft className="w-4 h-4" />
+                                    </Button>
+                                    <span className="font-mono text-sm font-medium">Measure {selectedMeasure}</span>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goNext} disabled={selectedMeasure >= measureCount}>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs text-green-400 hover:text-green-300" onClick={markAsPass} title="Mark OK (O)">
+                                        <Check className="w-3.5 h-3.5 mr-1" /> OK
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs text-zinc-500 hover:text-zinc-300" onClick={markAsSkipped} title="Skip (S)">
+                                        <SkipForward className="w-3.5 h-3.5 mr-1" /> Skip
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* Panel content */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {/* Cropped VexFlow render */}
+                                <div className="space-y-2">
+                                    <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide">VexFlow Render</h3>
+                                    <div className="border border-zinc-700 rounded-lg bg-white p-2 flex items-center justify-center min-h-[100px]">
+                                        {currentCrop ? (
+                                            <img src={currentCrop} alt={`Measure ${selectedMeasure} render`} className="max-w-full" />
+                                        ) : (
+                                            <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Reference image upload */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Reference</h3>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-6 text-xs"
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            <Upload className="w-3 h-3 mr-1" />
+                                            {currentRef ? 'Replace' : 'Upload'}
+                                        </Button>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleReferenceUpload}
+                                        />
+                                    </div>
+                                    <div className="border border-zinc-700 rounded-lg bg-zinc-900 min-h-[100px] flex items-center justify-center overflow-hidden">
+                                        {currentRef ? (
+                                            <img src={currentRef} alt="Reference" className="max-w-full" />
+                                        ) : (
+                                            <div className="text-center text-zinc-600 p-4">
+                                                <Upload className="w-6 h-6 mx-auto mb-1 opacity-40" />
+                                                <p className="text-xs">Upload reference for M{selectedMeasure}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Audit button */}
+                                <Button
+                                    onClick={handleRunAudit}
+                                    disabled={!currentRef || !currentCrop || currentStatus === 'auditing'}
+                                    className="w-full bg-purple-600 hover:bg-purple-700"
+                                >
+                                    {currentStatus === 'auditing' ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing M{selectedMeasure}...</>
+                                    ) : (
+                                        <>Run Audit (Enter)</>
+                                    )}
+                                </Button>
+
+                                {auditError && (
+                                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                                        {auditError}
+                                    </div>
+                                )}
+
+                                {/* Results for this measure */}
+                                {currentResult && (
+                                    <div className="space-y-3">
+                                        {/* Summary */}
+                                        <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3">
+                                            <p className="text-sm text-zinc-300">{currentResult.summary}</p>
+                                            <div className="flex gap-3 mt-2 text-xs">
+                                                {(['critical', 'major', 'minor', 'cosmetic'] as const).map(sev => {
+                                                    const count = currentResult.findings.filter(f => f.severity === sev).length
+                                                    if (count === 0) return null
+                                                    const cfg = SEVERITY_CONFIG[sev]
+                                                    return (
+                                                        <span key={sev} className={`${cfg.color} flex items-center gap-1`}>
+                                                            <cfg.icon className="w-3 h-3" /> {count}
+                                                        </span>
+                                                    )
+                                                })}
+                                                {currentResult.findings.length === 0 && (
+                                                    <span className="text-green-400 flex items-center gap-1">
+                                                        <CheckCircle className="w-3 h-3" /> No issues
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Findings */}
+                                        {currentResult.findings.map(finding => {
+                                            const cfg = SEVERITY_CONFIG[finding.severity]
+                                            const expanded = expandedFindings.has(finding.id)
+                                            return (
+                                                <div key={finding.id} className={`border rounded-lg ${cfg.bg} overflow-hidden`}>
                                                     <button
                                                         onClick={() => toggleFinding(finding.id)}
-                                                        className="w-full px-4 py-3 flex items-center gap-3 text-left"
+                                                        className="w-full px-3 py-2 flex items-center gap-2 text-left"
                                                     >
-                                                        <cfg.icon className={`w-4 h-4 ${cfg.color} shrink-0`} />
-                                                        <span className="text-xs text-zinc-500 shrink-0 w-16">
-                                                            {finding.measure ? `M${finding.measure}` : '—'}
-                                                            {finding.beat ? ` b${finding.beat}` : ''}
+                                                        <cfg.icon className={`w-3.5 h-3.5 ${cfg.color} shrink-0`} />
+                                                        <span className="text-xs text-zinc-500 shrink-0">
+                                                            {finding.beat ? `b${finding.beat}` : ''}
                                                         </span>
-                                                        <span className="text-xs text-zinc-500 shrink-0 w-12 uppercase">
-                                                            {finding.staff || '—'}
-                                                        </span>
-                                                        <span className="text-sm flex-1 truncate">
-                                                            {finding.description}
-                                                        </span>
-                                                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider shrink-0 px-2 py-0.5 rounded bg-zinc-800">
+                                                        <span className="text-sm flex-1 truncate">{finding.description}</span>
+                                                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 shrink-0">
                                                             {finding.category}
                                                         </span>
-                                                        {expanded ? (
-                                                            <ChevronUp className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                                                        ) : (
-                                                            <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                                                        )}
+                                                        {expanded ? <ChevronUp className="w-3 h-3 text-zinc-500" /> : <ChevronDown className="w-3 h-3 text-zinc-500" />}
                                                     </button>
                                                     {expanded && (
-                                                        <div className="px-4 pb-4 pt-1 border-t border-zinc-700/50 space-y-2 text-sm">
-                                                            <div className="grid grid-cols-2 gap-4">
+                                                        <div className="px-3 pb-3 pt-1 border-t border-zinc-700/50 space-y-2 text-sm">
+                                                            <div className="grid grid-cols-2 gap-3">
                                                                 <div>
-                                                                    <span className="text-xs text-zinc-500">Expected (Reference)</span>
-                                                                    <p className="text-green-400">{finding.expected}</p>
+                                                                    <span className="text-[10px] text-zinc-500 uppercase">Expected</span>
+                                                                    <p className="text-green-400 text-xs">{finding.expected}</p>
                                                                 </div>
                                                                 <div>
-                                                                    <span className="text-xs text-zinc-500">Actual (Render)</span>
-                                                                    <p className="text-red-400">{finding.actual}</p>
+                                                                    <span className="text-[10px] text-zinc-500 uppercase">Actual</span>
+                                                                    <p className="text-red-400 text-xs">{finding.actual}</p>
                                                                 </div>
                                                             </div>
                                                             <div>
-                                                                <span className="text-xs text-zinc-500">Suggested Fix</span>
-                                                                <p className="text-zinc-300">{finding.suggestedFix}</p>
+                                                                <span className="text-[10px] text-zinc-500 uppercase">Suggested Fix</span>
+                                                                <p className="text-zinc-300 text-xs">{finding.suggestedFix}</p>
                                                             </div>
                                                         </div>
                                                     )}
@@ -407,31 +521,20 @@ export default function ScoreAuditPage() {
                                     </div>
                                 )}
                             </div>
-                        )}
-                    </div>
-                )}
 
-                {/* VexFlow Live Render (for capture) */}
-                <div className="space-y-3">
-                    <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wide">
-                        Live VexFlow Render
-                    </h2>
-                    <div
-                        ref={vexflowContainerRef}
-                        className="border border-zinc-700 rounded-lg bg-white overflow-auto"
-                    >
-                        {score ? (
-                            <VexFlowRenderer
-                                score={score}
-                                musicFont="Bravura"
-                                onRenderComplete={() => {}}
-                            />
-                        ) : (
-                            <div className="text-zinc-500 text-center p-8">
-                                No score loaded — upload a MusicXML file in the editor first
+                            {/* Keyboard hint */}
+                            <div className="px-4 py-2 border-t border-zinc-800 text-[10px] text-zinc-600 flex gap-3 shrink-0">
+                                <span>← → navigate</span>
+                                <span>Enter audit</span>
+                                <span>O mark ok</span>
+                                <span>S skip</span>
                             </div>
-                        )}
-                    </div>
+                        </>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm p-8 text-center">
+                            Click a measure block above or in the score to start auditing
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
