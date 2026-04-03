@@ -42,6 +42,7 @@ interface AppStore {
     cursorPosition: number
     curtainLookahead: number
     showCursor: boolean
+    showMarkers: boolean
     isLevel2Mode: boolean
     subdivision: number
     currentMeasure: number
@@ -81,6 +82,7 @@ interface AppStore {
     setCursorPosition: (pos: number) => void
     setCurtainLookahead: (lookahead: number) => void
     setShowCursor: (show: boolean) => void
+    setShowMarkers: (show: boolean) => void
     setIsLevel2Mode: (level2: boolean) => void
     setSubdivision: (sub: number) => void
     setCurrentMeasure: (measure: number) => void
@@ -125,6 +127,7 @@ export const useAppStore = create<AppStore>()(
             cursorPosition: 0.2,
             curtainLookahead: 0.25,
             showCursor: true,
+            showMarkers: true,
             isLevel2Mode: false,
             subdivision: 4,
             currentMeasure: 1,
@@ -175,6 +178,7 @@ export const useAppStore = create<AppStore>()(
             setCursorPosition: (cursorPosition) => set({ cursorPosition }),
             setCurtainLookahead: (curtainLookahead) => set({ curtainLookahead }),
             setShowCursor: (showCursor) => set({ showCursor }),
+            setShowMarkers: (showMarkers) => set({ showMarkers }),
             setIsLevel2Mode: (isLevel2Mode) => set({ isLevel2Mode }),
             setSubdivision: (subdivision) => set({ subdivision }),
             setCurrentMeasure: (currentMeasure) => set({ currentMeasure }),

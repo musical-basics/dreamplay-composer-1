@@ -381,6 +381,7 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
     const previewEffects = useAppStore((s) => s.previewEffects)
     const parsedMidi = useAppStore((s) => s.parsedMidi)
     const dynamicColor = useAppStore((s) => s.dynamicColor)
+    const showMarkers = useAppStore((s) => s.showMarkers)
 
     // ─── Bake MIDI velocity/duration onto NoteData ────────────────────
     // Keep refs in sync so handleRenderComplete can access latest values
@@ -783,7 +784,7 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
                 <div ref={cursorRef} className="absolute pointer-events-none z-[1000]" style={{ display: 'none', width: '2px', backgroundColor: '#10B981', borderRadius: '1px', opacity: 0.85, transition: 'transform 0.05s linear' }} />
                 <div ref={curtainRef} className="absolute pointer-events-none z-[999]" style={{ display: 'none', top: 0, bottom: 0 }} />
 
-                {isAdmin && anchors.map(anchor => {
+                {isAdmin && showMarkers && anchors.map(anchor => {
                     const leftPixel = measureXMap.get(anchor.measure)
                     if (leftPixel === undefined) return null
 
@@ -808,7 +809,7 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
                     )
                 })}
 
-                {isAdmin && beatAnchors.map(bAnchor => {
+                {isAdmin && showMarkers && beatAnchors.map(bAnchor => {
                     const beatMap = beatXMapRef.current.get(bAnchor.measure)
                     const leftPixel = beatMap ? beatMap.get(bAnchor.beat) : undefined
                     if (leftPixel === undefined) return null

@@ -19,6 +19,7 @@ import {
     Crosshair,
     Play,
     Palette,
+    MapPin,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -69,6 +70,8 @@ export const ScoreControls: React.FC<ScoreControlsProps> = ({
     const setPreviewEffects = useAppStore((s) => s.setPreviewEffects)
     const dynamicColor = useAppStore((s) => s.dynamicColor)
     const setDynamicColor = useAppStore((s) => s.setDynamicColor)
+    const showMarkers = useAppStore((s) => s.showMarkers)
+    const setShowMarkers = useAppStore((s) => s.setShowMarkers)
     const bg = darkMode ? 'bg-zinc-800/80 border-zinc-700' : 'bg-white/80 border-zinc-200'
 
     return (
@@ -153,6 +156,12 @@ export const ScoreControls: React.FC<ScoreControlsProps> = ({
                 className={cn('h-7 px-2', showCursor ? 'text-blue-400' : darkMode ? 'text-zinc-500' : 'text-zinc-400')}>
                 <Crosshair className="w-3.5 h-3.5" />
             </Button>
+            {isAdmin && (
+                <Button variant="ghost" size="sm" onClick={() => setShowMarkers(!showMarkers)} title={showMarkers ? 'Hide anchor markers' : 'Show anchor markers'}
+                    className={cn('h-7 px-2', showMarkers ? 'text-red-400' : darkMode ? 'text-zinc-500' : 'text-zinc-400')}>
+                    <MapPin className="w-3.5 h-3.5" />
+                </Button>
+            )}
         </div>
     )
 }
