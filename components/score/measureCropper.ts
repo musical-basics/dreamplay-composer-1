@@ -1,78 +1,79 @@
 // components/score/measureCropper.ts
 //
-// Crops a single measure from the full VexFlow SVG render by cloning the SVG,
-// setting a viewBox to the measure's bounding box, and rasterizing to a PNG
-// data URL suitable for sending to Claude Vision.
+// Two-phase measure cropping:
+// 1. rasterizeScore() — html2canvas the full VexFlow container once (fonts intact)
+// 2. cropMeasure() — extract a measure's bounding box from the rasterized canvas
+//
+// This avoids SVG serialization issues where FontFace-loaded music fonts
+// (Bravura, etc.) render as squares because they're not in CSS @font-face rules.
 
-const PADDING = 8 // px padding around the cropped measure
+const PADDING = 8
+const SCALE = 2 // retina
+
+let cachedFullCanvas: HTMLCanvasElement | null = null
+let cachedContainerWidth = 0
 
 /**
- * Crop a single measure from the VexFlow SVG and return it as a base64 PNG.
+ * Rasterize the entire VexFlow container to an off-screen canvas.
+ * Call this once after VexFlowRenderer completes, then use cropMeasure()
+ * to extract individual measures cheaply.
  *
- * @param svgElement - The rendered SVG element from VexFlowRenderer's container
- * @param measureX - X position of the measure (from measureXMap)
- * @param measureWidth - Width of the measure (from measureWidthMap)
- * @param systemY - System Y bounds (from systemYMap: { top, height })
+ * @param container - The DOM element wrapping the VexFlow SVG
+ * @returns The rasterized canvas (also cached internally)
+ */
+export async function rasterizeScore(container: HTMLElement): Promise<HTMLCanvasElement> {
+    const { default: html2canvas } = await import('html2canvas-pro')
+    const canvas = await html2canvas(container, {
+        backgroundColor: '#ffffff',
+        scale: SCALE,
+        useCORS: true,
+    })
+    cachedFullCanvas = canvas
+    cachedContainerWidth = container.scrollWidth
+    return canvas
+}
+
+/**
+ * Crop a single measure from the pre-rasterized full score canvas.
+ *
+ * @param measureX - X position of the measure in SVG coords (from measureXMap)
+ * @param measureWidth - Width of the measure in SVG coords (from measureWidthMap)
+ * @param systemY - System Y bounds in SVG coords (from systemYMap: { top, height })
+ * @param fullCanvas - Optional pre-rasterized canvas (uses cached if omitted)
  * @returns base64 PNG data URL of the cropped measure
  */
-export async function cropMeasure(
-    svgElement: SVGSVGElement,
+export function cropMeasure(
     measureX: number,
     measureWidth: number,
     systemY: { top: number; height: number },
-): Promise<string> {
-    // Clone the SVG so we don't mutate the live render
-    const clone = svgElement.cloneNode(true) as SVGSVGElement
+    fullCanvas?: HTMLCanvasElement,
+): string {
+    const source = fullCanvas ?? cachedFullCanvas
+    if (!source) throw new Error('No rasterized score — call rasterizeScore() first')
 
-    // Set viewBox to crop to the measure's bounding box (with padding)
-    const vbX = Math.max(0, measureX - PADDING)
-    const vbY = Math.max(0, systemY.top - PADDING)
-    const vbW = measureWidth + PADDING * 2
-    const vbH = systemY.height + PADDING * 2
-    clone.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`)
-    clone.setAttribute('width', String(vbW * 2))  // 2x for retina
-    clone.setAttribute('height', String(vbH * 2))
+    // SVG coords → canvas pixel coords
+    // The html2canvas scale factor maps container CSS pixels to canvas pixels.
+    // VexFlow SVG coords match CSS pixels 1:1 (no separate SVG viewBox scaling).
+    const sx = Math.max(0, (measureX - PADDING)) * SCALE
+    const sy = Math.max(0, (systemY.top - PADDING)) * SCALE
+    const sw = (measureWidth + PADDING * 2) * SCALE
+    const sh = (systemY.height + PADDING * 2) * SCALE
 
-    // Inline any @font-face rules from the document into the SVG
-    // This ensures music fonts render correctly when the SVG is rasterized
-    const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
-    const fontRules: string[] = []
-    for (const sheet of document.styleSheets) {
-        try {
-            for (const rule of sheet.cssRules) {
-                if (rule instanceof CSSFontFaceRule) {
-                    fontRules.push(rule.cssText)
-                }
-            }
-        } catch {
-            // Cross-origin stylesheets throw — skip them
-        }
-    }
-    if (fontRules.length > 0) {
-        styleEl.textContent = fontRules.join('\n')
-        clone.insertBefore(styleEl, clone.firstChild)
-    }
+    const crop = document.createElement('canvas')
+    crop.width = sw
+    crop.height = sh
+    const ctx = crop.getContext('2d')
+    if (!ctx) throw new Error('Canvas context unavailable')
 
-    // Serialize to a data URL
-    const serializer = new XMLSerializer()
-    const svgString = serializer.serializeToString(clone)
-    const svgDataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)))
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, sw, sh)
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh)
 
-    // Rasterize to canvas → PNG
-    return new Promise<string>((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-            const canvas = document.createElement('canvas')
-            canvas.width = img.width
-            canvas.height = img.height
-            const ctx = canvas.getContext('2d')
-            if (!ctx) { reject(new Error('Canvas context unavailable')); return }
-            ctx.fillStyle = '#ffffff'
-            ctx.fillRect(0, 0, canvas.width, canvas.height)
-            ctx.drawImage(img, 0, 0)
-            resolve(canvas.toDataURL('image/png'))
-        }
-        img.onerror = () => reject(new Error('Failed to rasterize SVG'))
-        img.src = svgDataUrl
-    })
+    return crop.toDataURL('image/png')
+}
+
+/** Clear the cached full-score canvas (call when score re-renders) */
+export function clearCache(): void {
+    cachedFullCanvas = null
+    cachedContainerWidth = 0
 }
