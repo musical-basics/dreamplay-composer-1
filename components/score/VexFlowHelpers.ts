@@ -91,10 +91,11 @@ export function isBeamable(duration: string): boolean {
  * Return the correct VexFlow beam group Fractions for a time signature.
  *
  * Standard engraving rules:
- *   - Simple quadruple (4/4, 4/2): beam by half-bar → Fraction(1, 2)
- *       In 4/4: 2 groups of 4 eighths / 8 sixteenths (secondary beams break every 4)
- *   - Simple duple (2/4): beam by quarter → Fraction(1, 4), 2 groups of 2 eighths
- *   - Simple triple (3/4): beam by quarter → Fraction(1, 4), 3 groups of 2 eighths
+ *   - Simple meters (2/4, 3/4, 4/4, …): beam at the beat boundary.
+ *       Group size = one beat = Fraction(1, timeSigDen)
+ *       In 4/4: 4 groups of Fraction(1,4) → 2 eighths OR 4 sixteenths per group ✓
+ *       In 3/4: 3 groups of Fraction(1,4) → 2 eighths per group
+ *       In 2/4: 2 groups of Fraction(1,4) → 2 eighths per group
  *   - Compound (6/8, 9/8, 12/8): beam by dotted-quarter → Fraction(3, 8)
  *       In 6/8: 2 groups of 3 eighths each
  *
@@ -110,13 +111,9 @@ export function getBeamGroups(timeSigNum: number, timeSigDen: number): Fraction[
         return Array.from({ length: numGroups }, () => new Fraction(3, 8))
     }
 
-    // Simple quadruple (4 beats): beam by half-bar = Fraction(1, 2)
-    // → 2 groups of 4 eighths (or 8 sixteenths with secondary beam every 4)
-    if (timeSigNum === 4) {
-        return [new Fraction(1, 2), new Fraction(1, 2)]
-    }
-
-    // Simple duple (2/x) and triple (3/x): one group per beat = Fraction(1, timeSigDen)
+    // Simple meters: one group per beat = Fraction(1, timeSigDen)
+    // 4/4: 4 × Fraction(1,4) → 4 sixteenths per group, 2 eighths per group
+    // 3/4: 3 × Fraction(1,4) → same per-beat grouping
     const numGroups = timeSigNum
     return Array.from({ length: numGroups }, () => new Fraction(1, timeSigDen))
 }
