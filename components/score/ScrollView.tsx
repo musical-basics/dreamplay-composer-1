@@ -70,6 +70,7 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
     const [intermediateScore, setIntermediateScore] = useState<IntermediateScore | null>(null)
     const [isLoaded, setIsLoaded] = useState(false)
     const [parseError, setParseError] = useState<string | null>(null)
+    const [parseStage, setParseStage] = useState<string | null>(null)
     const xmlEventsRef = useRef<XMLEvent[]>([])
     const totalMeasuresRef = useRef<number>(0)
     const systemYMapRef = useRef<{ top: number; height: number }>({ top: 20, height: 260 })
@@ -84,18 +85,23 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
 
         const parse = async () => {
             try {
+                setParseStage('Fetching MusicXML...')
+                console.log('[ScrollView] Starting parallel parse: MusicXML + OSMD...')
+
                 // Run both parsers in parallel:
                 // 1. Direct MusicXML → IntermediateScore (accurate notes for VexFlow)
                 // 2. Headless OSMD → xmlEvents (preserved data contract for AutoMapper)
-                console.log('[ScrollView] Starting parallel parse: MusicXML + OSMD...')
-
                 const [score, osmdResult] = await Promise.all([
-                    parseMusicXml(xmlUrl),
+                    parseMusicXml(xmlUrl).then(r => {
+                        if (!cancelled) setParseStage('Parsing beat events...')
+                        return r
+                    }),
                     parseWithOsmd(xmlUrl),
                 ])
 
                 if (cancelled) return
 
+                setParseStage('Rendering notation...')
                 xmlEventsRef.current = osmdResult.xmlEvents
                 totalMeasuresRef.current = osmdResult.totalMeasures
                 setIntermediateScore(score)
@@ -105,6 +111,7 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
                 if (!cancelled) {
                     const msg = err instanceof Error ? err.message : 'Failed to parse score'
                     setParseError(msg)
+                    setParseStage(null)
                     console.error('[ScrollView] Parse error:', msg)
                 }
             }
@@ -219,6 +226,7 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
         }
 
         setIsLoaded(true)
+        setParseStage(null)
 
         // FIX: If NOTE reveal mode is already active when the score finishes rendering,
         // we need to hide all the newly-created note elements (the useEffect already fired
@@ -732,16 +740,26 @@ const ScrollViewComponent: React.FC<ScrollViewProps> = ({
 
                 {!isLoaded && xmlUrl && !parseError && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="text-center space-y-2">
+                        <div className="text-center space-y-3">
                             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                            <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Loading score...</p>
+                            <p className={`text-sm font-medium ${darkMode ? 'text-zinc-300' : 'text-zinc-600'}`}>
+                                {parseStage || 'Loading score...'}
+                            </p>
                         </div>
                     </div>
                 )}
 
                 {parseError && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <p className="text-red-500 text-sm">Error: {parseError}</p>
+                        <div className="text-center space-y-2 max-w-md px-4">
+                            <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
+                                <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                            </div>
+                            <p className="text-red-500 text-sm font-medium">Failed to load score</p>
+                            <p className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>{parseError}</p>
+                        </div>
                     </div>
                 )}
 

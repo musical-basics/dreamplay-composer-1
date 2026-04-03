@@ -48,6 +48,7 @@ export default function AdminEditor() {
     const [title, setTitle] = useState('')
     const [isRecording, setIsRecording] = useState(false)
     const [isAiMapping, setIsAiMapping] = useState(false)
+    const [midiError, setMidiError] = useState<string | null>(null)
     const [nextMeasure, setNextMeasure] = useState(2)
     const [totalMeasures, setTotalMeasures] = useState(0)
     const [noteCounts, setNoteCounts] = useState<Map<number, number>>(new Map())
@@ -130,15 +131,21 @@ export default function AdminEditor() {
 
     useEffect(() => {
         if (!config?.midi_url) return
+        setMidiError(null)
         const loadMidiFromUrl = async () => {
             try {
                 const response = await fetch(config.midi_url!)
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch MIDI file: ${response.status} ${response.statusText}`)
+                }
                 const buffer = await response.arrayBuffer()
                 const parsed = parseMidiFile(buffer)
                 setParsedMidi(parsed)
                 loadMidi(parsed)
                 getPlaybackManager().duration = parsed.durationSec
             } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Failed to load MIDI'
+                setMidiError(msg)
                 console.error('Failed to load MIDI:', err)
             }
         }
@@ -698,6 +705,12 @@ export default function AdminEditor() {
                 </div>
 
                 <div className="shrink-0 flex flex-col gap-0.5">
+                    {midiError && (
+                        <div className="px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+                            <span className="font-medium">MIDI Error:</span>
+                            <span className="truncate">{midiError}</span>
+                        </div>
+                    )}
                     {showMidiTimeline && (
                         <MidiTimeline
                             parsedMidi={parsedMidi}

@@ -22,6 +22,7 @@ export function UploadWizard({
 }: UploadWizardProps) {
     const [uploading, setUploading] = useState<string | null>(null)
     const [lastUploadStatus, setLastUploadStatus] = useState<string | null>(null)
+    const [uploadError, setUploadError] = useState<string | null>(null)
 
     // Determine current step based on config
     const hasAudio = !!config.audio_url
@@ -40,6 +41,7 @@ export function UploadWizard({
         if (!file) return
 
         setUploading(type)
+        setUploadError(null)
         try {
             if (type === 'audio') await onUploadAudio(file)
             if (type === 'xml') await onUploadXml(file)
@@ -47,6 +49,8 @@ export function UploadWizard({
             setLastUploadStatus(type)
             setTimeout(() => setLastUploadStatus(null), 3000)
         } catch (err) {
+            const msg = err instanceof Error ? err.message : `Upload failed for ${type}`
+            setUploadError(msg)
             console.error(`Upload failed for ${type}:`, err)
         } finally {
             setUploading(null)
@@ -71,6 +75,22 @@ export function UploadWizard({
                     <div className="bg-green-600 text-white px-6 py-2.5 rounded-full shadow-xl shadow-green-500/20 flex items-center gap-2 font-bold border border-green-400/20">
                         <CheckCircle2 className="w-5 h-5" />
                         <span>Success! {lastUploadStatus === 'audio' ? 'Master Audio' : lastUploadStatus === 'xml' ? 'Sheet Music' : 'Performance MIDI'} Uploaded</span>
+                    </div>
+                </div>
+            )}
+
+            {uploadError && (
+                <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="bg-red-600 text-white px-6 py-2.5 rounded-xl shadow-xl shadow-red-500/20 flex items-center gap-2 font-medium border border-red-400/20 max-w-lg">
+                        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                        </svg>
+                        <span className="text-sm truncate">{uploadError}</span>
+                        <button onClick={() => setUploadError(null)} className="ml-2 text-white/70 hover:text-white shrink-0">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             )}

@@ -28,12 +28,22 @@ export async function parseMusicXml(xmlUrl: string): Promise<IntermediateScore> 
  * Parse a MusicXML string into an IntermediateScore.
  */
 export function parseMusicXmlString(xmlText: string): IntermediateScore {
+    if (!xmlText || !xmlText.trim()) {
+        throw new Error('MusicXML content is empty')
+    }
+
     const parser = new DOMParser()
     const doc = parser.parseFromString(xmlText, 'application/xml')
 
     const parserErrors = doc.getElementsByTagName('parsererror')
     if (parserErrors.length > 0) {
         throw new Error(`MusicXML parse error: ${parserErrors[0].textContent}`)
+    }
+
+    // Validate root element is a MusicXML document
+    const root = doc.documentElement.tagName
+    if (root !== 'score-partwise' && root !== 'score-timewise') {
+        throw new Error(`Invalid MusicXML: expected <score-partwise> or <score-timewise> root element, got <${root}>`)
     }
 
     // Get title
@@ -43,6 +53,7 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
     // Find all parts — for piano, usually one part with 2 staves
     const parts = doc.querySelectorAll('part')
     if (parts.length === 0) {
+        console.warn('[MusicXmlParser] No <part> elements found in MusicXML — returning empty score')
         return { title, measures: [] }
     }
 

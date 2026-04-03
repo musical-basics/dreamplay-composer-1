@@ -5,7 +5,27 @@ import type { NoteEvent, ParsedMidi } from '../types'
  * Parse a binary MIDI file buffer into a normalized, sorted NoteEvent array.
  */
 export function parseMidiFile(buffer: ArrayBuffer, fileName?: string): ParsedMidi {
-    const midi = new Midi(buffer)
+    if (!buffer || buffer.byteLength === 0) {
+        throw new Error('MIDI file is empty')
+    }
+
+    // Validate MIDI header magic bytes ("MThd")
+    const header = new Uint8Array(buffer, 0, Math.min(4, buffer.byteLength))
+    if (header[0] !== 0x4D || header[1] !== 0x54 || header[2] !== 0x68 || header[3] !== 0x64) {
+        throw new Error('Invalid MIDI file: missing MThd header. The file may be corrupted or not a valid MIDI file.')
+    }
+
+    let midi: Midi
+    try {
+        midi = new Midi(buffer)
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new Error(`Failed to parse MIDI file: ${msg}`)
+    }
+
+    if (midi.tracks.length === 0) {
+        throw new Error('MIDI file contains no tracks')
+    }
 
     const tempoChanges = midi.header.tempos.map((t) => ({
         time: t.time ?? 0,

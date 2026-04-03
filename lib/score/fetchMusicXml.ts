@@ -35,6 +35,15 @@ async function responseToXmlText(response: Response, source: 'direct' | 'proxy')
     if (!xmlText.trim()) {
         throw new Error(`MusicXML fetch failed (${source}): empty response body`)
     }
+
+    // Validate that the response looks like XML
+    const trimmed = xmlText.trimStart()
+    if (!trimmed.startsWith('<?xml') && !trimmed.startsWith('<score-partwise') && !trimmed.startsWith('<score-timewise') && !trimmed.startsWith('<!DOCTYPE')) {
+        // Could be an HTML error page, JSON response, or other non-XML content
+        const preview = trimmed.slice(0, 120).replace(/\n/g, ' ')
+        throw new Error(`MusicXML fetch failed (${source}): response is not valid MusicXML. Starts with: "${preview}"`)
+    }
+
     return xmlText
 }
 
