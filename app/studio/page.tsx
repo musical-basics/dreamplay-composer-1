@@ -8,6 +8,8 @@ import * as React from 'react'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Plus, Trash2, Globe, GlobeLock, Music, FileMusic } from 'lucide-react'
+import { UserButton } from '@clerk/nextjs'
+import { dark } from '@clerk/themes'
 import { Button } from '@/components/ui/button'
 import { fetchAllConfigs, createNewConfig, deleteConfigAction, togglePublishAction } from '@/app/actions/config'
 import type { SongConfig } from '@/lib/types'
@@ -91,6 +93,9 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
+                        <UserButton
+                            appearance={{ baseTheme: dark }}
+                        />
                         <Link href="/guide">
                             <Button variant="outline" className="bg-white text-black border-white hover:bg-zinc-200 font-outfit">
                                 Guide

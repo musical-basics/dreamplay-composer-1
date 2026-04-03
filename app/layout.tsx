@@ -20,8 +20,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-    title: 'Ultimate Pianist — Learn Piano with Sheet Music & Falling Notes',
-    description: 'Synchronized sheet music display and Synthesia-style falling notes for piano learning.',
+    title: 'DreamPlay Composer — Music Production Studio for Musicians',
+    description: 'Create, sync, and publish interactive music experiences with DreamPlay Composer. Upload your audio, sheet music, and MIDI to build stunning visual performances.',
 }
 
 export default function RootLayout({
@@ -30,7 +30,7 @@ export default function RootLayout({
     children: React.ReactNode
 }>) {
     return (
-        <ClerkProvider appearance={{ baseTheme: dark }}>
+        <ClerkProvider appearance={{ baseTheme: dark }} afterSignOutUrl="/login">
             <html lang="en">
                 <body className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} font-sans antialiased bg-black text-white`}>
                     {children}
