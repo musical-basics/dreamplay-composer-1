@@ -8,7 +8,7 @@
 
 import * as React from 'react'
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { VexFlow } from 'dreamflow'
+import { VexFlow, fontsReady } from 'dreamflow'
 import {
     Renderer,
     Stave,
@@ -56,26 +56,57 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
     const [isRendered, setIsRendered] = useState(false)
     const [fontsLoaded, setFontsLoaded] = useState(false)
 
-    // Preload ALL music fonts once on mount (DreamFlow forces browser download internally)
+    // Wait for dreamflow's bundled fonts (loaded from base64 data URIs at module init).
+    // The entry point's Font.load() is fire-and-forget — we await the exported `fontsReady`
+    // promise to ensure fonts are actually in document.fonts before rendering.
     useEffect(() => {
-        console.log('[FONT DEBUG] Preloading all DreamFlow fonts...')
-        VexFlow.loadFonts('Bravura', 'Gonville', 'Petaluma', 'Academico')
-            .then(() => {
-                // DreamFlow's Font.load() now calls document.fonts.load() internally,
-                // so no redundant browser-level font loading is needed here.
-                setFontsLoaded(true)
-            }).catch((err: unknown) => {
-                console.warn('[DREAMFLOW] Font preloading failed, using defaults', err)
-                setFontsLoaded(true)
-            })
+        const ensureFonts = async () => {
+            console.log('[FONT DEBUG] Awaiting dreamflow fontsReady promise...')
+            await fontsReady
+
+            // Verify fonts are actually in document.fonts (not just vacuous check() = true).
+            // Iterate the FontFaceSet to confirm Bravura exists as a loaded FontFace.
+            const fontFaces = [...document.fonts]
+            const bravuraFace = fontFaces.find(ff => ff.family === 'Bravura' && ff.status === 'loaded')
+            console.log('[FONT DEBUG] fontsReady resolved. Bravura FontFace:', bravuraFace ? 'FOUND' : 'MISSING',
+                '| Total FontFaces:', fontFaces.length,
+                '| Families:', [...new Set(fontFaces.map(ff => ff.family))].join(', '))
+
+            if (!bravuraFace) {
+                // Entry point fonts didn't load — fallback to CDN
+                console.warn('[FONT DEBUG] Bravura not in document.fonts, loading from CDN...')
+                try {
+                    await VexFlow.loadFonts('Bravura', 'Gonville', 'Petaluma', 'Academico')
+                } catch (err: unknown) {
+                    console.warn('[DREAMFLOW] CDN font loading also failed', err)
+                }
+            }
+            setFontsLoaded(true)
+        }
+        ensureFonts()
     }, [])
 
     const renderScore = useCallback(() => {
         if (!score || !containerRef.current || score.measures.length === 0 || !fontsLoaded) return
-        // Set the active font synchronously BEFORE creating any VexFlow objects
-        if (musicFont) VexFlow.setFonts(musicFont)
-        const fontAvailable = musicFont ? document.fonts.check(`30px "${musicFont}"`) : true
-        console.log('[FONT DEBUG] renderScore: musicFont =', JSON.stringify(musicFont), 'fontAvailable:', fontAvailable, 'getFonts():', VexFlow.getFonts())
+
+        // Set the active font synchronously BEFORE creating any VexFlow objects.
+        // Include Academico as fallback text font (matches entry point default).
+        if (musicFont) {
+            VexFlow.setFonts(musicFont, 'Academico')
+        }
+        // Real verification: iterate document.fonts to confirm the FontFace exists (not just check())
+        const fontFaces = [...document.fonts]
+        const targetFace = musicFont ? fontFaces.find(ff => ff.family === musicFont && ff.status === 'loaded') : null
+        const fontCount = musicFont ? fontFaces.filter(ff => ff.family === musicFont).length : 0
+        console.log('[FONT DEBUG] renderScore: musicFont =', JSON.stringify(musicFont),
+            'FontFace found:', !!targetFace, `(${fontCount} entries)`,
+            'getFonts():', VexFlow.getFonts())
+
+        // If the selected font has no actual FontFace in document.fonts, skip rendering.
+        if (musicFont && !targetFace) {
+            console.warn('[FONT DEBUG] No FontFace for', musicFont, '— deferring render')
+            return
+        }
 
         // Clear previous render
         containerRef.current.innerHTML = ''
