@@ -199,14 +199,11 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
             let key: string
             let accStr: string | null = null
             if (isRest) {
-                // Rest position depends on staff and voice.
-                // In multi-voice, VexFlow displaces rests based on stem direction:
-                //   voice 1 (stems UP, lower voiceIndex): rests go DOWN → use center or low-center
-                //   voice 2+ (stems DOWN, higher voiceIndex): rests go UP → use center or high-center
-                // For treble staff: center = 'b/4' (voice1), 'd/5' (voice2 stems-down → displaced up)
-                // For bass staff: center = 'd/3' (voice1), 'b/3' (voice2 stems-down → displaced up)
+                // Rest position: use the middle line of the staff for each clef.
+                // Treble clef middle line = b/4, Bass clef middle line = d/3.
+                // In multi-voice, displace: voice 1 stays center, voice 2+ goes up one step.
                 if (staffNum === 2) {
-                    key = voiceNum <= 1 ? 'b/2' : 'b/3'
+                    key = voiceNum <= 1 ? 'd/3' : 'f/3'
                 } else {
                     key = voiceNum <= 1 ? 'b/4' : 'd/5'
                 }
