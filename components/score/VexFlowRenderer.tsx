@@ -28,7 +28,7 @@ import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import {
     STAVE_WIDTH, STAVE_Y_TREBLE, STAVE_SPACING, LEFT_MARGIN, SYSTEM_HEIGHT,
     createStaveNote, isBeamable, addArticulation, detectHeuristicTuplets,
-    attachGraceNotes, processSlurs, durationToBeats,
+    attachGraceNotes, processSlurs, durationToBeats, getMeasureWidth,
     type NoteData, type VexFlowRenderResult, type TupletData, type ActiveSlurs,
 } from './VexFlowHelpers'
 
@@ -119,7 +119,20 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
         setIsRendered(false)
 
         const measures = score.measures
-        const totalWidth = LEFT_MARGIN + (measures.length * STAVE_WIDTH) + 40
+
+        // Pre-compute per-measure widths and cumulative X positions.
+        // First measure gets extra padding for clef + key sig + time sig.
+        const FIRST_MEASURE_EXTRA = 60
+        const measureWidths: number[] = measures.map((m, i) =>
+            getMeasureWidth(m) + (i === 0 ? FIRST_MEASURE_EXTRA : 0)
+        )
+        const measureXPositions: number[] = []
+        let cumulativeX = LEFT_MARGIN
+        for (const w of measureWidths) {
+            measureXPositions.push(cumulativeX)
+            cumulativeX += w
+        }
+        const totalWidth = cumulativeX + 40
 
         // Create SVG renderer
         const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG)
@@ -162,7 +175,8 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
         for (let mIdx = 0; mIdx < measures.length; mIdx++) {
             const measure = measures[mIdx]
             const measureNumber = measure.measureNumber
-            const x = LEFT_MARGIN + (mIdx * STAVE_WIDTH)
+            const x = measureXPositions[mIdx]
+            const staveWidth = measureWidths[mIdx]
 
             // Update running state
             if (measure.keySignature) currentKeySig = measure.keySignature
@@ -170,8 +184,8 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
             if (measure.timeSignatureDenominator) currentTimeSigDen = measure.timeSignatureDenominator
 
             // ── Create staves ──
-            const trebleStave = new Stave(x, STAVE_Y_TREBLE, STAVE_WIDTH)
-            const bassStave = new Stave(x, STAVE_Y_TREBLE + STAVE_SPACING, STAVE_WIDTH)
+            const trebleStave = new Stave(x, STAVE_Y_TREBLE, staveWidth)
+            const bassStave = new Stave(x, STAVE_Y_TREBLE + STAVE_SPACING, staveWidth)
 
             // Clefs
             for (const staff of measure.staves) {
