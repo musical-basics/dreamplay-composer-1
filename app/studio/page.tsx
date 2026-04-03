@@ -131,11 +131,7 @@ export default function AdminDashboard() {
                         <FileMusic className="w-16 h-16 mx-auto text-zinc-700" />
                         <p className="text-zinc-400 text-lg">No configurations yet</p>
                         <p className="text-zinc-500 text-sm">Create your first song configuration to get started.</p>
-                        <Link href="/guide" className="block">
-                            <Button variant="outline" className="bg-white text-black border-white hover:bg-zinc-200 font-outfit">
-                                Read step-by-step setup
-                            </Button>
-                        </Link>
+
                         <Button
                             onClick={handleCreate}
                             className="bg-purple-600 hover:bg-purple-700 text-white font-outfit"
