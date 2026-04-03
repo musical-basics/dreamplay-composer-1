@@ -77,9 +77,13 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
         const measureEl = measureEls[mIdx]
         const measureNumber = mIdx + 1
 
-        // Parse <attributes>
-        const attrs = measureEl.querySelector('attributes')
-        if (attrs) {
+        // Parse ALL <attributes> blocks in this measure — MusicXML allows multiple
+        // (e.g. a mid-measure clef change lives in a second <attributes> block)
+        const allAttrsEls = Array.from(measureEl.querySelectorAll(':scope > attributes'))
+        // Track which staff numbers have a clef declared in ANY attrs block this measure
+        const clefsInThisMeasure = new Set<number>()
+
+        for (const attrs of allAttrsEls) {
             const divEl = attrs.querySelector('divisions')
             if (divEl) currentDivisions = parseInt(divEl.textContent || '1')
 
@@ -100,14 +104,17 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
                 if (fifthsEl) currentFifths = parseInt(fifthsEl.textContent || '0')
             }
 
-            // Parse clefs
-            const clefEls = attrs.querySelectorAll('clef')
-            clefEls.forEach(clefEl => {
+            // Parse clefs — accumulate across all attrs blocks
+            attrs.querySelectorAll('clef').forEach(clefEl => {
                 const num = parseInt(clefEl.getAttribute('number') || '1')
                 const sign = clefEl.querySelector('sign')?.textContent || 'G'
                 prevClefs.set(num, sign === 'F' ? 'bass' : 'treble')
+                clefsInThisMeasure.add(num)
             })
         }
+
+        // Keep a reference to the first attrs element for legacy compatibility (may be null)
+        const attrs = allAttrsEls[0] ?? null
 
         // Emit time sig only when changed
         let tsNum: number | undefined
@@ -351,20 +358,12 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
         for (let sIdx = 0; sIdx < currentStaffCount; sIdx++) {
             const staffNumber = sIdx + 1
 
-            // Clef — only emit if set in attributes for this measure.
-            // NOTE: CSS attribute selectors (clef[number="N"]) are unreliable on XML DOMs;
-            // use Array.from + getAttribute for robust cross-browser matching.
+            // Clef — emit when declared in this measure (across all <attributes> blocks)
+            // or on measure 1 (always emit initial clef state).
             let clef: 'treble' | 'bass' | undefined
-            const measureHasClefForStaff = attrs
-                ? Array.from(attrs.querySelectorAll('clef')).some(
-                      el => parseInt(el.getAttribute('number') || '1') === staffNumber
-                  )
-                : false
-            if (mIdx === 0 || measureHasClefForStaff) {
+            if (mIdx === 0 || clefsInThisMeasure.has(staffNumber)) {
                 clef = (prevClefs.get(staffNumber) as 'treble' | 'bass') || (sIdx === 0 ? 'treble' : 'bass')
-                if (mIdx === 0) {
-                    console.log(`[MusicXmlParser] M1 staff${staffNumber} clef = ${clef} (prevClefs has: ${[...prevClefs.entries()].map(([k,v]) => k+'='+v).join(', ')})`)
-                }
+                console.log(`[MusicXmlParser] M${measureNumber} staff${staffNumber} clef = ${clef}${mIdx === 0 ? ` (prevClefs: ${[...prevClefs.entries()].map(([k,v]) => k+'='+v).join(', ')})` : ' (clef change)'}`)
             }
 
             // Collect voices for this staff
