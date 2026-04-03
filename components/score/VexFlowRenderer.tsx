@@ -478,12 +478,14 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                                 if (!beatBuckets.has(beatFloor)) beatBuckets.set(beatFloor, [])
                                 beatBuckets.get(beatFloor)!.push(sn)
                             }
-                            // One Beam per bucket — all notes in the bucket beam together
+                            // One Beam per bucket — all notes beam together unconditionally.
+                            // autoStem: single-voice → true (VexFlow picks consistent stem direction
+                            //   for the whole group based on note positions relative to middle line).
+                            //   multi-voice → false (stems already set per-note by stemDir).
+                            const autoStem = stemDir === undefined
                             for (const [, groupNotes] of beatBuckets) {
                                 if (groupNotes.length < 2) continue
-                                // new Beam(notes, autoStem) beams all notes unconditionally.
-                                // autoStem=false: notes already have stemDir set from voice assignment.
-                                measureBeams.push(new Beam(groupNotes, false))
+                                measureBeams.push(new Beam(groupNotes, autoStem))
                             }
                         } catch { /* ignore */ }
                     }
