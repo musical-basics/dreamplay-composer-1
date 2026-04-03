@@ -55,6 +55,7 @@ export default function AdminEditor() {
     const [xmlEvents, setXmlEvents] = useState<XMLEvent[]>([])
     const xmlEventsRef = useRef<XMLEvent[]>([]) // Persists fermata data across OSMD re-renders
     const [v5State, setV5State] = useState<V5MapperState | null>(null)
+    const hasAutoMappedRef = useRef(false)
     const { musicFont, setFont } = useMusicFont()
     const [displayTime, setDisplayTime] = useState(0)
     const displayRafRef = useRef<number>(0)
@@ -374,6 +375,18 @@ export default function AdminEditor() {
             setIsAiMapping(false);
         }
     }, [parsedMidi, totalMeasures, config?.audio_url, setAnchors, setBeatAnchors, setIsLevel2Mode]);
+
+    // Auto-run Echolocation V5 once all data is ready and anchors haven't been mapped
+    useEffect(() => {
+        if (hasAutoMappedRef.current) return
+        if (!parsedMidi || totalMeasures === 0 || xmlEvents.length === 0) return
+        // Only auto-run if anchors are still at the default (just M1)
+        if (anchors.length > 1) return
+
+        hasAutoMappedRef.current = true
+        console.log('[EditPage] Auto-running Echolocation V5...')
+        handleAutoMap(0.0625) // 64th note chord threshold (default)
+    }, [parsedMidi, totalMeasures, xmlEvents, anchors.length, handleAutoMap])
 
     const handleConfirmGhost = useCallback(async () => {
         if (!v5State || v5State.status !== 'paused' || !v5State.ghostAnchor || !parsedMidi) return;
