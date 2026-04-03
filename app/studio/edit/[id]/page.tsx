@@ -191,6 +191,13 @@ export default function AdminEditor() {
             if (!res.ok) throw new Error('Failed to upload file to R2')
             await updateConfigAction(configId, { audio_url: finalFileUrl })
             setConfig((prev) => prev ? { ...prev, audio_url: finalFileUrl } : prev)
+
+            // Hotload: create audio element immediately so playback is ready
+            const audio = new Audio(finalFileUrl)
+            audio.crossOrigin = 'anonymous'
+            const pm = getPlaybackManager()
+            pm.setAudioElement(audio)
+            audio.addEventListener('loadedmetadata', () => { pm.duration = audio.duration })
         } catch (err) { console.error(err) }
         if (!(fileOrEvent instanceof File)) fileOrEvent.target.value = ''
     }

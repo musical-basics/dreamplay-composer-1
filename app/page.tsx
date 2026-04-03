@@ -7,6 +7,6 @@ export default async function Page() {
     if (userId) {
         redirect('/studio')
     } else {
-        redirect('/sign-in')
+        redirect('/login')
     }
 }
