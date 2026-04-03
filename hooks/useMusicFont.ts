@@ -35,6 +35,9 @@ interface UseMusicFontOptions {
 interface UseMusicFontReturn {
     /** Current font name to pass to VexFlowRenderer. '' means use VexFlow default. */
     musicFont: string
+    /** The saved/intended font name — always up-to-date, even during debounce delays.
+     *  Use this for saving to DB instead of musicFont (which may lag during re-renders). */
+    savedFont: string
     /** Set the saved font. Applies after delay. Use for DB load and dropdown changes. */
     setFont: (font: string) => void
     /** Whether the initial loading overlay should be shown (learn page pattern) */
@@ -153,5 +156,5 @@ export function useMusicFont(options: UseMusicFontOptions = {}): UseMusicFontRet
         }
     }, [])
 
-    return { musicFont, setFont, initialLoading }
+    return { musicFont, savedFont: savedFontRef.current, setFont, initialLoading }
 }

@@ -56,7 +56,7 @@ export default function AdminEditor() {
     const xmlEventsRef = useRef<XMLEvent[]>([]) // Persists fermata data across OSMD re-renders
     const [v5State, setV5State] = useState<V5MapperState | null>(null)
     const hasAutoMappedRef = useRef(false)
-    const { musicFont, setFont } = useMusicFont()
+    const { musicFont, savedFont, setFont } = useMusicFont()
     const [displayTime, setDisplayTime] = useState(0)
     const displayRafRef = useRef<number>(0)
     const [showAdvanced, setShowAdvanced] = useState(false)
@@ -156,11 +156,11 @@ export default function AdminEditor() {
     const handleSave = async () => {
         try {
             setSaving(true)
-            console.log('[FONT DEBUG] Saving music_font:', JSON.stringify(musicFont))
+            console.log('[FONT DEBUG] Saving music_font:', JSON.stringify(savedFont), '(musicFont state:', JSON.stringify(musicFont), ')')
             await updateConfigAction(configId, {
                 title, anchors, beat_anchors: beatAnchors,
                 subdivision, is_level2: isLevel2Mode,
-                music_font: musicFont,
+                music_font: savedFont,
             })
         } catch (err) { console.error('Failed to save:', err) }
         finally { setSaving(false) }
