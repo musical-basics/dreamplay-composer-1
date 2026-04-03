@@ -184,6 +184,8 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
             }
 
             if (mIdx === 0) {
+                console.log(`[VFR] M1 clefs: treble="${currentTrebleClef}" bass="${currentBassClef}"`,
+                    'staves:', measure.staves.map(s => `idx${s.staffIndex}:${s.clef ?? 'undef'}`).join(', '))
                 trebleStave.addClef(currentTrebleClef)
                 bassStave.addClef(currentBassClef)
 
@@ -700,6 +702,21 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                 }
             })
             console.log(`[VFR DOM] Elements: populated=${populatedCount} missing=${missingCount}`)
+
+            // ─── FONT DEBUG: Inspect actual SVG text elements ──
+            if (containerRef.current) {
+                const svgTexts = containerRef.current.querySelectorAll('svg text')
+                const first5 = Array.from(svgTexts).slice(0, 5)
+                console.log(`[FONT DEBUG SVG] Total <text> elements: ${svgTexts.length}`)
+                first5.forEach((el, i) => {
+                    const htmlEl = el as SVGTextElement
+                    console.log(`[FONT DEBUG SVG] text[${i}]:`,
+                        'attr font-family=', htmlEl.getAttribute('font-family'),
+                        '| style=', htmlEl.getAttribute('style'),
+                        '| computed font-family=', window.getComputedStyle(htmlEl).fontFamily,
+                        '| text=', htmlEl.textContent?.slice(0, 20))
+                })
+            }
 
             setIsRendered(true)
 

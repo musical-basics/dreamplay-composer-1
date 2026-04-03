@@ -351,10 +351,20 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
         for (let sIdx = 0; sIdx < currentStaffCount; sIdx++) {
             const staffNumber = sIdx + 1
 
-            // Clef — only emit if set in attributes for this measure
+            // Clef — only emit if set in attributes for this measure.
+            // NOTE: CSS attribute selectors (clef[number="N"]) are unreliable on XML DOMs;
+            // use Array.from + getAttribute for robust cross-browser matching.
             let clef: 'treble' | 'bass' | undefined
-            if (mIdx === 0 || (attrs && attrs.querySelector(`clef[number="${staffNumber}"]`))) {
+            const measureHasClefForStaff = attrs
+                ? Array.from(attrs.querySelectorAll('clef')).some(
+                      el => parseInt(el.getAttribute('number') || '1') === staffNumber
+                  )
+                : false
+            if (mIdx === 0 || measureHasClefForStaff) {
                 clef = (prevClefs.get(staffNumber) as 'treble' | 'bass') || (sIdx === 0 ? 'treble' : 'bass')
+                if (mIdx === 0) {
+                    console.log(`[MusicXmlParser] M1 staff${staffNumber} clef = ${clef} (prevClefs has: ${[...prevClefs.entries()].map(([k,v]) => k+'='+v).join(', ')})`)
+                }
             }
 
             // Collect voices for this staff
