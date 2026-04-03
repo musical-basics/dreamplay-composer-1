@@ -21,7 +21,6 @@ import {
     Dot,
     StaveConnector,
     Tuplet,
-    Fraction,
     type RenderContext,
     VoiceMode,
 } from 'dreamflow'
@@ -29,7 +28,7 @@ import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import {
     STAVE_WIDTH, STAVE_Y_TREBLE, STAVE_SPACING, LEFT_MARGIN, SYSTEM_HEIGHT,
     createStaveNote, isBeamable, addArticulation, detectHeuristicTuplets,
-    attachGraceNotes, processSlurs,
+    attachGraceNotes, processSlurs, getBeamGroups,
     type NoteData, type VexFlowRenderResult, type TupletData, type ActiveSlurs,
 } from './VexFlowHelpers'
 
@@ -446,10 +445,20 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
 
                     if (beamableNotes.length >= 2) {
                         try {
-                            // Use generous beam groups to avoid splitting across beat boundaries
-                            const groups = [new Fraction(currentTimeSigNum, currentTimeSigDen)]
+                            // Compute beat-aligned beam groups for the time signature.
+                            // Standard engraving rules:
+                            //   - Simple duple/quadruple (2/4, 4/4): beam in quarter-note groups
+                            //     → each group = 1 quarter = Fraction(1, 4)
+                            //     → in 4/4: four groups of 1 quarter = 2 eighth notes or 4 sixteenths per group
+                            //   - 3/4: beam in quarter-note groups too (one per beat)
+                            //   - Compound (6/8, 9/8, 12/8): beam in dotted-quarter groups
+                            //     → each group = 3 eighth notes = Fraction(3, 8)
+                            // Vexflow's Beam.generateBeams(notes, { groups }) uses Fraction(n, d)
+                            // where n/d is the GROUP SIZE in whole-note fractions.
+                            // E.g. Fraction(1, 4) = 1 quarter note = 2 eighths or 4 sixteenths per beam group.
+                            const beamGroups = getBeamGroups(currentTimeSigNum, currentTimeSigDen)
+                            const beamOpts: any = { groups: beamGroups }
                             // For multi-voice, force beam stem direction to match voice
-                            const beamOpts: any = { groups }
                             if (stemDir !== undefined) {
                                 beamOpts.stemDirection = stemDir
                                 beamOpts.maintainStemDirections = true
