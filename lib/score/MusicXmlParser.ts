@@ -199,10 +199,11 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
             let key: string
             let accStr: string | null = null
             if (isRest) {
-                // Rest position: use the middle line of the staff for each clef.
+                // Rest position: use the middle line of the current clef.
                 // Treble clef middle line = b/4, Bass clef middle line = d/3.
                 // In multi-voice, displace: voice 1 stays center, voice 2+ goes up one step.
-                if (staffNum === 2) {
+                const currentClef = prevClefs.get(staffNum) || (staffNum === 2 ? 'bass' : 'treble')
+                if (currentClef === 'bass') {
                     key = voiceNum <= 1 ? 'd/3' : 'f/3'
                 } else {
                     key = voiceNum <= 1 ? 'b/4' : 'd/5'
