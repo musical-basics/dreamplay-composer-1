@@ -479,11 +479,10 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                 const availableWidth = noteEndX - maxNoteStartX - 10 // 10px right margin
                 formatter.format(vfVoices, Math.max(availableWidth, 100))
 
-                // Post-format: reposition non-fermata articulations for multi-voice staves.
-                // Fermata positioning is now handled upstream in dreamflow (always ABOVE).
+                // Post-format: reposition non-fermata articulations based on stem direction.
+                // Places articulations on the notehead side (below for stem-up, above for stem-down).
+                // Fermata positioning is handled upstream in dreamflow (always ABOVE).
                 vfVoices.forEach(v => {
-                    const isMulti = multiVoiceVoices.has(v)
-                    if (!isMulti) return // single-voice staves use VexFlow defaults
                     const tickables = v.getTickables()
                     for (const t of tickables) {
                         const sn = t as StaveNote
@@ -496,6 +495,7 @@ const VexFlowRendererComponent: React.FC<VexFlowRendererProps> = ({
                                 if (mod.getCategory?.() === 'articulations' || mod.constructor?.name === 'Articulation') {
                                     // Skip fermatas — handled upstream
                                     if (mod.isFermata) continue
+                                    // stemDir 1 = up → position BELOW (3), stemDir -1 = down → position ABOVE (4)
                                     const pos = stemDir === 1 ? 3 : 4
                                     mod.setPosition(pos)
                                     mod.setYShift(pos === 4 ? 2 : -2)
