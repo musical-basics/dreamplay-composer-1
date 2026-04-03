@@ -84,7 +84,7 @@ export async function createConfig(title: string = 'Untitled', userId: string): 
     const sb = getSupabase()
     const { data, error } = await sb
         .from('configurations')
-        .insert({ title, user_id: userId })
+        .insert({ title, user_id: userId, music_font: 'Bravura' })
         .select()
         .single()
 
