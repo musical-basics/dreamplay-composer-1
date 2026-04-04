@@ -86,10 +86,14 @@ export function formatAndDrawMeasure(params: FormatAndDrawParams): void {
                     n.applyTickMultiplier(t.normal, t.actual)
                 } catch { /* ignore */ }
             }
+            // Explicitly set tuplet number location based on stem direction:
+            // stem up (1) → number above beam; stem down (-1) → number below beam
+            const tupletLocation = t.stemDirection === -1 ? -1 : 1
             const tuplet = new Tuplet(t.notes, {
                 numNotes: t.actual,
                 notesOccupied: t.normal,
                 bracketed: false,
+                location: tupletLocation,
             })
             vfTuplets.push(tuplet)
         } catch { /* ignore */ }

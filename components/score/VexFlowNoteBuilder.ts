@@ -148,7 +148,7 @@ export function buildVoiceNotes(params: BuildVoiceNotesParams): BuildVoiceNotesR
             currentTupletNotes.push(staveNote)
         }
         if (note.tupletStop && currentTupletNotes && currentTupletNotes.length > 0) {
-            measureTuplets.push({ notes: currentTupletNotes, actual: currentTupletActual, normal: currentTupletNormal })
+            measureTuplets.push({ notes: currentTupletNotes, actual: currentTupletActual, normal: currentTupletNormal, stemDirection: stemDir })
             currentTupletNotes = null
         }
 
@@ -236,13 +236,13 @@ export function buildVoiceNotes(params: BuildVoiceNotesParams): BuildVoiceNotesR
     // Catches unmarked triplets when note values overflow measure capacity.
     const heuristicTuplets = detectHeuristicTuplets(
         voice.notes, vfNotes, measureTuplets,
-        currentTimeSigNum, currentTimeSigDen, measureNumber
+        currentTimeSigNum, currentTimeSigDen, measureNumber, stemDir
     )
     measureTuplets.push(...heuristicTuplets)
 
     // Flush any unclosed tuplet (≥2 notes — single-note unclosed = cross-measure start)
     if (currentTupletNotes && currentTupletNotes.length >= 2) {
-        measureTuplets.push({ notes: currentTupletNotes, actual: currentTupletActual, normal: currentTupletNormal })
+        measureTuplets.push({ notes: currentTupletNotes, actual: currentTupletActual, normal: currentTupletNormal, stemDirection: stemDir })
     }
 
     // ── Within-measure ties ───────────────────────────────────────

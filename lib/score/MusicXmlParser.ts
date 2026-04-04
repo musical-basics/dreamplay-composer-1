@@ -199,14 +199,22 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
             let key: string
             let accStr: string | null = null
             if (isRest) {
-                // Rest position: use the middle line of the current clef.
-                // Treble clef middle line = b/4, Bass clef middle line = d/3.
-                // In multi-voice, displace: voice 1 stays center, voice 2+ goes up one step.
-                const currentClef = prevClefs.get(staffNum) || (staffNum === 2 ? 'bass' : 'treble')
-                if (currentClef === 'bass') {
-                    key = voiceNum <= 1 ? 'd/3' : 'f/3'
+                // Use MusicXML <display-step>/<display-octave> if present for exact rest positioning
+                const restEl = child.querySelector('rest')
+                const displayStep = restEl?.querySelector('display-step')?.textContent
+                const displayOctave = restEl?.querySelector('display-octave')?.textContent
+                if (displayStep && displayOctave) {
+                    key = `${displayStep.toLowerCase()}/${displayOctave}`
                 } else {
-                    key = voiceNum <= 1 ? 'b/4' : 'd/5'
+                    // Fallback: use the middle line of the current clef.
+                    // Treble clef middle line = b/4, Bass clef middle line = d/3.
+                    // In multi-voice, displace: voice 1 stays center, voice 2+ goes up one step.
+                    const currentClef = prevClefs.get(staffNum) || (staffNum === 2 ? 'bass' : 'treble')
+                    if (currentClef === 'bass') {
+                        key = voiceNum <= 1 ? 'd/3' : 'f/3'
+                    } else {
+                        key = voiceNum <= 1 ? 'b/4' : 'd/5'
+                    }
                 }
             } else {
                 const pitchEl = child.querySelector('pitch')

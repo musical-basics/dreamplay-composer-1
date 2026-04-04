@@ -86,6 +86,8 @@ export interface TupletSpec {
     notes: import('dreamflow').StaveNote[]
     actual: number
     normal: number
+    /** Stem direction of the notes in this group (1=up, -1=down). Used to set tuplet number location. */
+    stemDirection?: number
 }
 
 // ─── Note Helpers ──────────────────────────────────────────────────
@@ -175,6 +177,7 @@ export type TupletData = {
     notes: StaveNote[]
     actual: number
     normal: number
+    stemDirection?: number
 }
 
 /**
@@ -231,6 +234,7 @@ export function detectHeuristicTuplets(
     timeSigNum: number,
     timeSigDen: number,
     measureNumber: number,
+    stemDirection?: number,
 ): TupletData[] {
     const measureCapacity = timeSigNum * (4 / timeSigDen)
     const totalBeats = calculateVoiceDuration(voiceNotes)
@@ -253,7 +257,7 @@ export function detectHeuristicTuplets(
 
         if (allEighths && noRests && notAlreadyTuplet && noTupletFlags) {
             const tripletNotes = [vfNotes[ni], vfNotes[ni + 1], vfNotes[ni + 2]]
-            detected.push({ notes: tripletNotes, actual: 3, normal: 2 })
+            detected.push({ notes: tripletNotes, actual: 3, normal: 2, stemDirection })
             tripletNotes.forEach(n => tupletNoteIds.add(n))
         }
     }
