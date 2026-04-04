@@ -73,6 +73,21 @@ export interface VexFlowRenderResult {
     measureCount: number
 }
 
+/** A pending tie between two StaveNotes. Collected during note building, drawn after all voices format. */
+export interface TieRequest {
+    firstNote: import('dreamflow').StaveNote
+    lastNote: import('dreamflow').StaveNote
+    firstIndices: number[]
+    lastIndices: number[]
+}
+
+/** A tuplet group detected during note building (explicit or heuristic). */
+export interface TupletSpec {
+    notes: import('dreamflow').StaveNote[]
+    actual: number
+    normal: number
+}
+
 // ─── Note Helpers ──────────────────────────────────────────────────
 
 /**
