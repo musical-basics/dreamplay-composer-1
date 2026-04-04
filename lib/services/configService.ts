@@ -108,6 +108,23 @@ export async function getConfigById(id: string, userId: string): Promise<SongCon
     return data as SongConfig
 }
 
+/** Internal use only — fetches config by ID without auth or publish checks.
+ *  Uses service role key. For server-side internal pages like audit-render. */
+export async function getConfigByIdInternal(id: string): Promise<SongConfig | null> {
+    const sb = getSupabase()
+    const { data, error } = await sb
+        .from('configurations')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+    if (error) {
+        console.error('Failed to get config (internal):', error.message)
+        return null
+    }
+    return data as SongConfig
+}
+
 export async function getPublicConfigById(id: string): Promise<SongConfig | null> {
     const sb = getSupabase()
     const { data, error } = await sb

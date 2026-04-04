@@ -10,6 +10,7 @@ import {
     getPublishedConfigs,
     getConfigById,
     getPublicConfigById,
+    getConfigByIdInternal,
     createConfig,
     updateConfig,
     deleteConfig,
@@ -36,11 +37,16 @@ export async function fetchPublishedConfigs(): Promise<SongConfig[]> {
 
 export async function fetchConfigById(id: string): Promise<SongConfig | null> {
     const { userId } = await auth()
-    
+
     if (userId) {
         return getConfigById(id, userId)
     }
     return getPublicConfigById(id)
+}
+
+/** Fetch config without auth — for internal server-side pages (audit-render). */
+export async function fetchConfigByIdInternal(id: string): Promise<SongConfig | null> {
+    return getConfigByIdInternal(id)
 }
 
 export async function createNewConfig(title?: string): Promise<SongConfig> {

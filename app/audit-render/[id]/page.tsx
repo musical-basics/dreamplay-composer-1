@@ -20,7 +20,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { parseMusicXml } from '@/lib/score/MusicXmlParser'
 import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
-import { fetchConfigById } from '@/app/actions/config'
+import { fetchConfigByIdInternal } from '@/app/actions/config'
 
 export default function AuditRenderPage() {
     const params = useParams()
@@ -39,7 +39,7 @@ export default function AuditRenderPage() {
             console.log('[AUDIT-RENDER] Loading config:', configId)
             setStatus('fetching-config')
             try {
-                const cfg = await fetchConfigById(configId)
+                const cfg = await fetchConfigByIdInternal(configId)
                 if (!cfg) {
                     console.error('[AUDIT-RENDER] Config not found')
                     setStatus('error-no-config')
