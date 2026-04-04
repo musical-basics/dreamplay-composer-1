@@ -299,6 +299,11 @@ export function parseMusicXmlString(xmlText: string): IntermediateScore {
 
             const vfId = `vf-M${measureNumber}-S${staffNum - 1}-V${voiceNum}-B${roundedBeat}`
 
+            // Debug: log articulations for M4 treble staff
+            if (measureNumber === 4 && staffNum === 1 && articulations.length > 0) {
+                console.log(`[MusicXmlParser] M4 S1 beat=${roundedBeat} key=${key} dur=${vfDuration} articulations=[${articulations.join(',')}]`)
+            }
+
             if (!staffVoiceNotes.has(svKey)) {
                 staffVoiceNotes.set(svKey, { staffNum, voiceNum, notes: [] })
             }

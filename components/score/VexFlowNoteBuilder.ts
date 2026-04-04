@@ -122,6 +122,9 @@ export function buildVoiceNotes(params: BuildVoiceNotesParams): BuildVoiceNotesR
         // Fermata position is handled upstream in dreamflow (always ABOVE).
         for (const artCode of note.articulations) {
             addArticulation(staveNote, artCode)
+            if (measureNumber === 4 && staff.staffIndex === 0) {
+                console.log(`[NoteBuilder] M4 treble: attached '${artCode}' to beat=${note.beat} keys=[${note.keys.join(',')}] dur=${note.duration}`)
+            }
         }
 
         vfNotes.push(staveNote)

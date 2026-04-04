@@ -86,14 +86,10 @@ export function formatAndDrawMeasure(params: FormatAndDrawParams): void {
                     n.applyTickMultiplier(t.normal, t.actual)
                 } catch { /* ignore */ }
             }
-            // Explicitly set tuplet number location based on stem direction:
-            // stem up (1) → number above beam; stem down (-1) → number below beam
-            const tupletLocation = t.stemDirection === -1 ? -1 : 1
             const tuplet = new Tuplet(t.notes, {
                 numNotes: t.actual,
                 notesOccupied: t.normal,
                 bracketed: false,
-                location: tupletLocation,
             })
             vfTuplets.push(tuplet)
         } catch { /* ignore */ }
@@ -120,6 +116,26 @@ export function formatAndDrawMeasure(params: FormatAndDrawParams): void {
     }))
     const availableWidth = noteEndX - maxNoteStartX - 10
     formatter.format(vfVoices, Math.max(availableWidth, 100))
+
+    // ── Post-format: tuplet location from resolved stem direction ──
+    // After formatting, VexFlow has resolved autoStem, so we can read the
+    // actual stem direction from the first note in each tuplet group and
+    // place the number on the beam side (above for stem-up, below for stem-down).
+    vfTuplets.forEach(t => {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const tuplet = t as any
+            const firstNote = tuplet.notes?.[0]
+            if (firstNote) {
+                const resolvedStemDir = firstNote.getStemDirection?.()
+                if (resolvedStemDir === -1) {
+                    tuplet.setTupletLocation(-1) // stems down → number below
+                } else if (resolvedStemDir === 1) {
+                    tuplet.setTupletLocation(1)  // stems up → number above
+                }
+            }
+        } catch { /* ignore */ }
+    })
 
     // ── Post-format: articulation repositioning ────────────────────
     // Places non-fermata articulations on the notehead side:
