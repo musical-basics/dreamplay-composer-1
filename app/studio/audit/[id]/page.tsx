@@ -635,7 +635,22 @@ export default function ScoreAuditPage() {
                                                                 </div>
                                                             </div>
                                                             <div>
-                                                                <span className="text-[10px] text-zinc-500 uppercase">Suggested Fix</span>
+                                                                <span className="text-[10px] text-zinc-500 uppercase">Root Cause</span>
+                                                                <p className="text-xs">
+                                                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mr-1 ${
+                                                                        finding.rootCause === 'musicxml-parse' ? 'bg-purple-100 text-purple-700' :
+                                                                        finding.rootCause === 'vexflow-render' ? 'bg-blue-100 text-blue-700' :
+                                                                        finding.rootCause === 'normalization' ? 'bg-amber-100 text-amber-700' :
+                                                                        finding.rootCause === 'musicxml-source' ? 'bg-zinc-100 text-zinc-600' :
+                                                                        'bg-zinc-100 text-zinc-500'
+                                                                    }`}>
+                                                                        {finding.rootCause}
+                                                                    </span>
+                                                                </p>
+                                                                <p className="text-zinc-600 text-xs mt-1">{finding.rootCauseExplanation}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] text-zinc-500 uppercase">Systemic Fix</span>
                                                                 <p className="text-zinc-700 text-xs">{finding.suggestedFix}</p>
                                                             </div>
                                                         </div>

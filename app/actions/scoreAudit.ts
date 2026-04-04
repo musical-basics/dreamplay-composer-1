@@ -19,6 +19,8 @@ export type AuditFinding = {
     description: string
     expected: string
     actual: string
+    rootCause: 'musicxml-parse' | 'vexflow-render' | 'normalization' | 'musicxml-source' | 'unknown'
+    rootCauseExplanation: string
     suggestedFix: string
 }
 
@@ -54,32 +56,27 @@ export async function fetchAvailableModels(): Promise<{ id: string; name: string
     }
 }
 
-const AUDIT_SYSTEM_PROMPT = `You are a professional music engraver and sheet music proofreader. You will be shown two images:
+const AUDIT_SYSTEM_PROMPT = `You are a music notation rendering engineer debugging a VexFlow-based sheet music renderer. You understand MusicXML parsing, VexFlow's API, and music engraving conventions.
 
-1. A REFERENCE image — this is the correct, authoritative rendering of the sheet music (from a published edition or professional notation software).
-2. A RENDERED image — this is a web-based VexFlow rendering of the same music that may contain errors.
+You will be shown two images of the same measure of music:
+1. REFERENCE — the correct rendering (from Sibelius, Finale, or a published edition)
+2. RENDERED — our VexFlow web renderer's output, which may have bugs
 
-Your job is to meticulously compare every visual element and identify discrepancies. Focus on:
+Your job is NOT to describe surface-level differences. Your job is to DIAGNOSE WHY each difference exists and suggest SYSTEMIC fixes. Every issue falls into one of these root causes:
 
-- **Articulations**: staccato dots, tenuto marks, accents, fermatas — are they on the correct side of the note? (staccato/tenuto go on the notehead side: below for stem-up, above for stem-down)
-- **Accidentals**: missing, extra, or wrong accidentals (sharps, flats, naturals)
-- **Stem direction**: should stems go up or down?
-- **Beaming**: are notes beamed correctly? Are beam groups correct for the time signature?
-- **Slurs and ties**: missing, extra, or wrongly placed curves
-- **Spacing**: notes too close, too far apart, or overlapping
-- **Clefs and key/time signatures**: correct symbols in correct positions
-- **Dynamics and expression marks**: missing or misplaced
-- **Rest positions**: rests at correct vertical position
-- **Note positions**: notes on correct staff lines/spaces
-- **Missing or extra elements**: anything present in reference but absent in render, or vice versa
+- **musicxml-parse**: Our MusicXML parser (MusicXmlParser.ts) is misreading or ignoring data from the XML. For example: not parsing a clef change, dropping an articulation, misinterpreting voice assignments, wrong beat calculation.
+- **vexflow-render**: The parser reads the data correctly, but our VexFlow rendering code (VexFlowRenderer.tsx, VexFlowHelpers.ts) applies it incorrectly. For example: wrong articulation placement logic, beam grouping algorithm bug, stem direction override issue.
+- **normalization**: Our MusicXML preprocessing pipeline (normalizeMusicXml.ts) should be fixing this but isn't. For example: articulation placement attributes missing from the source XML.
+- **musicxml-source**: The original MusicXML file itself is wrong or incomplete (exported incorrectly from Sibelius/Finale). This is NOT a bug in our code.
 
-For each finding, determine:
-- The measure number (count from left, starting at 1 for the first visible measure)
-- The approximate beat position
-- Which staff (treble/bass)
-- Severity: critical (wrong notes/pitches), major (wrong articulations/accidentals), minor (spacing/positioning), cosmetic (visual polish)
+IMPORTANT RULES:
+- Do NOT suggest one-off fixes like "add a clef to measure 5" — suggest fixes to the PARSER or RENDERER that would fix this class of issue everywhere.
+- Do NOT flag cosmetic spacing differences unless they cause readability issues.
+- DO explain your reasoning for the root cause. WHY do you think the parser is dropping this element vs the renderer misplacing it?
+- If a clef/key/time signature is missing, ask: is the parser not emitting it, or is the renderer not drawing it?
+- If notes look wrong, ask: is the pitch/duration parsed correctly but rendered wrong, or parsed wrong in the first place?
 
-Respond with ONLY a JSON object matching this exact schema:
+Respond with ONLY a JSON object:
 {
     "findings": [
         {
@@ -89,16 +86,18 @@ Respond with ONLY a JSON object matching this exact schema:
             "measure": 1,
             "beat": 2.5,
             "staff": "treble|bass|both|null",
-            "description": "Clear description of the discrepancy",
+            "description": "What is wrong",
             "expected": "What the reference shows",
             "actual": "What the render shows",
-            "suggestedFix": "Technical suggestion for fixing in MusicXML or VexFlow renderer"
+            "rootCause": "musicxml-parse|vexflow-render|normalization|musicxml-source|unknown",
+            "rootCauseExplanation": "WHY this is happening — your diagnosis of which layer is broken and why",
+            "suggestedFix": "Specific systemic fix: which file to change, what logic to add/modify. Must fix the class of issue, not just this one measure."
         }
     ],
-    "summary": "Brief overall assessment (1-2 sentences)"
+    "summary": "1-2 sentence diagnosis of the overall rendering quality for this measure"
 }
 
-If no discrepancies are found, return an empty findings array with a summary saying the render matches the reference.`
+If no meaningful discrepancies exist, return an empty findings array.`
 
 export async function runScoreAudit(
     referenceImageBase64: string,
