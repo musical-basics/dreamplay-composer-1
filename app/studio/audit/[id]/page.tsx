@@ -12,7 +12,8 @@ import { parseMusicXml } from '@/lib/score/MusicXmlParser'
 import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
 import { fetchConfigById } from '@/app/actions/config'
-import { runScoreAudit, fetchAvailableModels, saveReferenceImage, saveRenderCapture, loadAllReferenceImages, loadAllRenderCaptures, type AuditResult } from '@/app/actions/scoreAudit'
+import { runScoreAudit, fetchAvailableModels, saveReferenceImage, loadAllReferenceImages, loadAllRenderCaptures, type AuditResult } from '@/app/actions/scoreAudit'
+import { captureAllRendersWithPlaywright } from '@/app/actions/captureRenders'
 import type { SongConfig } from '@/lib/types'
 
 type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
@@ -137,8 +138,10 @@ export default function ScoreAuditPage() {
         })
     }, [configId])
 
-    // Render captures per measure (loaded from disk or uploaded manually)
+    // Render captures per measure (loaded from disk, captured by Playwright)
     const [renderCaptures, setRenderCaptures] = useState<Map<number, string>>(new Map())
+    const [isCapturing, setIsCapturing] = useState(false)
+    const [captureStatus, setCaptureStatus] = useState<string | null>(null)
 
     // ── Handle render complete ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
@@ -159,25 +162,30 @@ export default function ScoreAuditPage() {
         })
     }, [configId])
 
-    // File input for render upload
-    const renderInputRef = useRef<HTMLInputElement>(null)
+    // ── Capture all renders via Playwright ──
+    const handleCaptureAll = useCallback(async () => {
+        if (!measureCount) return
+        setIsCapturing(true)
+        setCaptureStatus('Launching browser...')
 
-    // ── Manual render save: user screenshots the live view and uploads ──
-    const handleRenderUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file || !selectedMeasure) return
+        try {
+            const baseUrl = window.location.origin
+            const result = await captureAllRendersWithPlaywright(configId, measureCount, baseUrl)
+            setCaptureStatus(`Captured ${result.captured} measures${result.errors.length > 0 ? ` (${result.errors.length} errors)` : ''}`)
 
-        const reader = new FileReader()
-        reader.onload = () => {
-            const dataUrl = reader.result as string
-            setRenderCaptures(prev => new Map(prev).set(selectedMeasure, dataUrl))
-            saveRenderCapture(configId, selectedMeasure, dataUrl).catch(err => {
-                console.error('Failed to save render locally:', err)
-            })
+            // Reload captures from disk
+            const saved = await loadAllRenderCaptures(configId)
+            setRenderCaptures(saved)
+
+            if (result.errors.length > 0) {
+                console.warn('Capture errors:', result.errors)
+            }
+        } catch (err) {
+            setCaptureStatus(`Failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+        } finally {
+            setIsCapturing(false)
         }
-        reader.readAsDataURL(file)
-        if (renderInputRef.current) renderInputRef.current.value = ''
-    }, [selectedMeasure, configId])
+    }, [configId, measureCount])
 
     // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -347,6 +355,24 @@ export default function ScoreAuditPage() {
                         </div>
                     )}
 
+                    {/* Capture all renders button */}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCaptureAll}
+                        disabled={isCapturing || measureCount === 0}
+                        className="h-7 text-xs"
+                    >
+                        {isCapturing ? (
+                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Capturing...</>
+                        ) : (
+                            <>{renderCaptures.size > 0 ? `Re-capture (${renderCaptures.size}/${measureCount})` : 'Capture All Renders'}</>
+                        )}
+                    </Button>
+                    {captureStatus && !isCapturing && (
+                        <span className="text-[10px] text-zinc-400">{captureStatus}</span>
+                    )}
+
                     <div className="flex items-center gap-2">
                         <label className="text-xs text-zinc-500">Model:</label>
                         <select
@@ -487,27 +513,9 @@ export default function ScoreAuditPage() {
 
                             {/* Panel content */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                {/* VexFlow render (uploaded screenshot) */}
+                                {/* VexFlow render (captured by Playwright) */}
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-6 text-xs"
-                                            onClick={() => renderInputRef.current?.click()}
-                                        >
-                                            <Upload className="w-3 h-3 mr-1" />
-                                            {selectedMeasure && renderCaptures.has(selectedMeasure) ? 'Replace' : 'Save Render'}
-                                        </Button>
-                                        <input
-                                            ref={renderInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={handleRenderUpload}
-                                        />
-                                    </div>
+                                    <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
                                     <div className="border border-zinc-300 rounded-lg bg-white overflow-hidden min-h-[100px] flex items-center justify-center">
                                         {selectedMeasure && renderCaptures.has(selectedMeasure) ? (
                                             <img
@@ -517,8 +525,7 @@ export default function ScoreAuditPage() {
                                             />
                                         ) : (
                                             <div className="text-center text-zinc-400 p-4">
-                                                <Upload className="w-6 h-6 mx-auto mb-1 opacity-40" />
-                                                <p className="text-xs">Screenshot this measure and upload</p>
+                                                <p className="text-xs">Click &quot;Capture All Renders&quot; in the header</p>
                                             </div>
                                         )}
                                     </div>
