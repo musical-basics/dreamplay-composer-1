@@ -193,6 +193,69 @@ function getRenderPath(configId: string, measureNum: number): string {
     return path.join(REFS_DIR, configId, `m${measureNum}_render.png`)
 }
 
+/**
+ * Save audit results as a markdown file for IDE AI consumption.
+ * Saved to docs/audit-references/<configId>/m<N>_improvements.md
+ */
+export async function saveAuditResultMarkdown(
+    configId: string,
+    measureNum: number,
+    result: AuditResult,
+): Promise<void> {
+    const dir = path.join(REFS_DIR, configId)
+    await fs.mkdir(dir, { recursive: true })
+
+    const lines: string[] = [
+        `# Measure ${measureNum} — Audit Results`,
+        '',
+        `> Model: ${result.modelUsed}`,
+        `> Generated: ${new Date().toISOString()}`,
+        '',
+        `## Summary`,
+        '',
+        result.summary,
+        '',
+    ]
+
+    if (result.findings.length === 0) {
+        lines.push('No issues found.', '')
+    } else {
+        const severityCounts = { critical: 0, major: 0, minor: 0, cosmetic: 0 }
+        result.findings.forEach(f => { severityCounts[f.severity]++ })
+        const countsStr = Object.entries(severityCounts).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`).join(', ')
+        lines.push(`**Issues:** ${countsStr}`, '')
+
+        for (const f of result.findings) {
+            lines.push(
+                `---`,
+                '',
+                `### ${f.id}: ${f.description}`,
+                '',
+                `- **Category:** ${f.category}`,
+                `- **Severity:** ${f.severity}`,
+                `- **Staff:** ${f.staff ?? '—'}`,
+                `- **Beat:** ${f.beat ?? '—'}`,
+                '',
+                `**Expected:** ${f.expected}`,
+                '',
+                `**Actual:** ${f.actual}`,
+                '',
+                `**Root Cause:** \`${f.rootCause}\``,
+                '',
+                f.rootCauseExplanation,
+                '',
+                `**Systemic Fix:**`,
+                '',
+                f.suggestedFix,
+                '',
+            )
+        }
+    }
+
+    const filePath = path.join(dir, `m${measureNum}_improvements.md`)
+    await fs.writeFile(filePath, lines.join('\n'), 'utf-8')
+}
+
 export async function saveRenderCapture(
     configId: string,
     measureNum: number,

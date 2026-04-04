@@ -12,7 +12,7 @@ import { parseMusicXml } from '@/lib/score/MusicXmlParser'
 import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
 import { fetchConfigById } from '@/app/actions/config'
-import { runScoreAudit, fetchAvailableModels, saveReferenceImage, loadAllReferenceImages, loadAllRenderCaptures, type AuditResult } from '@/app/actions/scoreAudit'
+import { runScoreAudit, fetchAvailableModels, saveReferenceImage, loadAllReferenceImages, loadAllRenderCaptures, saveAuditResultMarkdown, type AuditResult } from '@/app/actions/scoreAudit'
 import { captureMeasureRender } from '@/app/actions/captureRenders'
 import type { SongConfig } from '@/lib/types'
 
@@ -221,6 +221,8 @@ export default function ScoreAuditPage() {
                 end: selectedMeasure,
             })
             setMeasureResults(prev => new Map(prev).set(selectedMeasure, result))
+            // Auto-save markdown for IDE AI consumption
+            saveAuditResultMarkdown(configId, selectedMeasure, result).catch(() => {})
             setMeasureStatuses(prev => new Map(prev).set(
                 selectedMeasure,
                 result.findings.length === 0 ? 'pass' : 'fail',
