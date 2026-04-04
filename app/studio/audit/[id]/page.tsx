@@ -13,7 +13,7 @@ import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
 import { fetchConfigById } from '@/app/actions/config'
 import { runScoreAudit, fetchAvailableModels, saveReferenceImage, loadAllReferenceImages, loadAllRenderCaptures, type AuditResult } from '@/app/actions/scoreAudit'
-import { captureAllRendersWithPlaywright } from '@/app/actions/captureRenders'
+import { captureMeasureRender } from '@/app/actions/captureRenders'
 import type { SongConfig } from '@/lib/types'
 
 type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
@@ -140,8 +140,7 @@ export default function ScoreAuditPage() {
 
     // Render captures per measure (loaded from disk, captured by Playwright)
     const [renderCaptures, setRenderCaptures] = useState<Map<number, string>>(new Map())
-    const [isCapturing, setIsCapturing] = useState(false)
-    const [captureStatus, setCaptureStatus] = useState<string | null>(null)
+    const [capturingMeasure, setCapturingMeasure] = useState<number | null>(null)
 
     // ── Handle render complete ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
@@ -162,30 +161,25 @@ export default function ScoreAuditPage() {
         })
     }, [configId])
 
-    // ── Capture all renders via Playwright ──
-    const handleCaptureAll = useCallback(async () => {
-        if (!measureCount) return
-        setIsCapturing(true)
-        setCaptureStatus('Launching browser...')
-
+    // ── Capture single measure via Playwright ──
+    const handleCaptureMeasure = useCallback(async (measureNum: number) => {
+        setCapturingMeasure(measureNum)
         try {
             const baseUrl = window.location.origin
-            const result = await captureAllRendersWithPlaywright(configId, measureCount, baseUrl)
-            setCaptureStatus(`Captured ${result.captured} measures${result.errors.length > 0 ? ` (${result.errors.length} errors)` : ''}`)
-
-            // Reload captures from disk
-            const saved = await loadAllRenderCaptures(configId)
-            setRenderCaptures(saved)
-
-            if (result.errors.length > 0) {
-                console.warn('Capture errors:', result.errors)
+            const result = await captureMeasureRender(configId, measureNum, baseUrl)
+            if ('dataUrl' in result) {
+                setRenderCaptures(prev => new Map(prev).set(measureNum, result.dataUrl))
+            } else {
+                console.error(`Capture M${measureNum} failed:`, result.error)
+                setAuditError(`Capture failed: ${result.error}`)
             }
         } catch (err) {
-            setCaptureStatus(`Failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+            console.error('Capture failed:', err)
+            setAuditError(`Capture failed: ${err instanceof Error ? err.message : 'unknown'}`)
         } finally {
-            setIsCapturing(false)
+            setCapturingMeasure(null)
         }
-    }, [configId, measureCount])
+    }, [configId])
 
     // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -355,24 +349,6 @@ export default function ScoreAuditPage() {
                         </div>
                     )}
 
-                    {/* Capture all renders button */}
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCaptureAll}
-                        disabled={isCapturing || measureCount === 0}
-                        className="h-7 text-xs"
-                    >
-                        {isCapturing ? (
-                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Capturing...</>
-                        ) : (
-                            <>{renderCaptures.size > 0 ? `Re-capture (${renderCaptures.size}/${measureCount})` : 'Capture All Renders'}</>
-                        )}
-                    </Button>
-                    {captureStatus && !isCapturing && (
-                        <span className="text-[10px] text-zinc-400">{captureStatus}</span>
-                    )}
-
                     <div className="flex items-center gap-2">
                         <label className="text-xs text-zinc-500">Model:</label>
                         <select
@@ -515,9 +491,29 @@ export default function ScoreAuditPage() {
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                 {/* VexFlow render (captured by Playwright) */}
                                 <div className="space-y-2">
-                                    <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-6 text-xs"
+                                            onClick={() => selectedMeasure && handleCaptureMeasure(selectedMeasure)}
+                                            disabled={!selectedMeasure || capturingMeasure === selectedMeasure}
+                                        >
+                                            {capturingMeasure === selectedMeasure ? (
+                                                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Capturing...</>
+                                            ) : (
+                                                <>{selectedMeasure && renderCaptures.has(selectedMeasure) ? 'Re-capture' : 'Capture'}</>
+                                            )}
+                                        </Button>
+                                    </div>
                                     <div className="border border-zinc-300 rounded-lg bg-white overflow-hidden min-h-[100px] flex items-center justify-center">
-                                        {selectedMeasure && renderCaptures.has(selectedMeasure) ? (
+                                        {capturingMeasure === selectedMeasure ? (
+                                            <div className="text-center p-4">
+                                                <Loader2 className="w-5 h-5 animate-spin text-purple-400 mx-auto mb-1" />
+                                                <p className="text-[10px] text-zinc-400">Headless browser capturing...</p>
+                                            </div>
+                                        ) : selectedMeasure && renderCaptures.has(selectedMeasure) ? (
                                             <img
                                                 src={renderCaptures.get(selectedMeasure)}
                                                 alt={`Measure ${selectedMeasure} render`}
@@ -525,7 +521,7 @@ export default function ScoreAuditPage() {
                                             />
                                         ) : (
                                             <div className="text-center text-zinc-400 p-4">
-                                                <p className="text-xs">Click &quot;Capture All Renders&quot; in the header</p>
+                                                <p className="text-xs">Click Capture to screenshot this measure</p>
                                             </div>
                                         )}
                                     </div>

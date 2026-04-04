@@ -1,9 +1,9 @@
 'use server'
 
 /**
- * Server Action: Capture measure renders using Playwright.
- * Launches a headless browser, navigates to the audit-render page,
- * waits for VexFlow to finish rendering, then screenshots each measure.
+ * Server Action: Capture a single measure render using Playwright.
+ * Launches headless Chromium, navigates to the audit-render page for
+ * the page containing that measure, screenshots just that measure.
  */
 
 import { chromium } from 'playwright'
@@ -14,96 +14,73 @@ const REFS_DIR = path.join(process.cwd(), 'docs', 'audit-references')
 const MEASURES_PER_PAGE = 8
 
 /**
- * Capture all measures for a given config using Playwright.
- * Screenshots are saved to docs/audit-references/<configId>/m<N>_render.png
- *
- * @param configId - The song config ID
- * @param totalMeasures - Total number of measures in the score
- * @param baseUrl - The app's base URL (e.g., http://localhost:3000)
- * @returns Map of measure number → base64 PNG data URL
+ * Capture a single measure's render via Playwright.
+ * Returns the base64 PNG data URL.
  */
-export async function captureAllRendersWithPlaywright(
+export async function captureMeasureRender(
     configId: string,
-    totalMeasures: number,
+    measureNum: number,
     baseUrl: string,
-): Promise<{ captured: number; errors: string[] }> {
+): Promise<{ dataUrl: string } | { error: string }> {
     const dir = path.join(REFS_DIR, configId)
     await fs.mkdir(dir, { recursive: true })
 
-    const totalPages = Math.ceil(totalMeasures / MEASURES_PER_PAGE)
-    let captured = 0
-    const errors: string[] = []
+    const pageNum = Math.floor((measureNum - 1) / MEASURES_PER_PAGE)
+    const url = `${baseUrl}/audit-render/${configId}?page=${pageNum}&per_page=${MEASURES_PER_PAGE}`
 
     const browser = await chromium.launch({ headless: true })
 
     try {
         const context = await browser.newContext({
             viewport: { width: 1920, height: 1080 },
-            deviceScaleFactor: 2, // retina
+            deviceScaleFactor: 2,
         })
         const page = await context.newPage()
 
-        for (let pageNum = 0; pageNum < totalPages; pageNum++) {
-            const url = `${baseUrl}/audit-render/${configId}?page=${pageNum}&per_page=${MEASURES_PER_PAGE}`
+        await page.goto(url, { waitUntil: 'networkidle' })
+        await page.waitForSelector('[data-render-ready="true"]', { timeout: 15000 })
+        await page.waitForTimeout(500) // font settling
 
-            try {
-                await page.goto(url, { waitUntil: 'networkidle' })
+        const renderData = await page.evaluate(() => {
+            const el = document.querySelector('[data-render-result]')
+            if (!el) return null
+            return JSON.parse(el.getAttribute('data-render-result') || '{}')
+        })
 
-                // Wait for VexFlow to signal render complete
-                await page.waitForSelector('[data-render-ready="true"]', { timeout: 15000 })
-
-                // Extra wait for font settling (SMuFL PUA glyph shaping)
-                await page.waitForTimeout(500)
-
-                // Read the render result data
-                const renderData = await page.evaluate(() => {
-                    const el = document.querySelector('[data-render-result]')
-                    if (!el) return null
-                    return JSON.parse(el.getAttribute('data-render-result') || '{}')
-                })
-
-                if (!renderData?.measureXMap) {
-                    errors.push(`Page ${pageNum}: No render data`)
-                    continue
-                }
-
-                const measureXMap = renderData.measureXMap as Record<string, number>
-                const measureWidthMap = renderData.measureWidthMap as Record<string, number>
-                const systemY = renderData.systemYMap as { top: number; height: number }
-                const padding = 8
-
-                // Screenshot each measure by clipping
-                for (const [measureNumStr, x] of Object.entries(measureXMap)) {
-                    const measureNum = parseInt(measureNumStr)
-                    const w = measureWidthMap[measureNumStr]
-                    if (w === undefined) continue
-
-                    const clipX = Math.max(0, x - padding)
-                    const clipY = Math.max(0, systemY.top - padding)
-                    const clipW = w + padding * 2
-                    const clipH = systemY.height + padding * 2
-
-                    const filePath = path.join(dir, `m${measureNum}_render.png`)
-
-                    try {
-                        await page.screenshot({
-                            path: filePath,
-                            clip: { x: clipX, y: clipY, width: clipW, height: clipH },
-                        })
-                        captured++
-                    } catch (err) {
-                        errors.push(`M${measureNum}: ${err instanceof Error ? err.message : 'screenshot failed'}`)
-                    }
-                }
-            } catch (err) {
-                errors.push(`Page ${pageNum}: ${err instanceof Error ? err.message : 'failed'}`)
-            }
+        if (!renderData?.measureXMap) {
+            return { error: 'No render data from page' }
         }
 
+        const x = renderData.measureXMap[String(measureNum)]
+        const w = renderData.measureWidthMap[String(measureNum)]
+        const systemY = renderData.systemYMap as { top: number; height: number }
+
+        if (x === undefined || w === undefined) {
+            return { error: `Measure ${measureNum} not found in render data` }
+        }
+
+        const padding = 8
+        const filePath = path.join(dir, `m${measureNum}_render.png`)
+
+        await page.screenshot({
+            path: filePath,
+            clip: {
+                x: Math.max(0, x - padding),
+                y: Math.max(0, systemY.top - padding),
+                width: w + padding * 2,
+                height: systemY.height + padding * 2,
+            },
+        })
+
+        // Read back as data URL
+        const data = await fs.readFile(filePath)
+        const dataUrl = `data:image/png;base64,${data.toString('base64')}`
+
         await context.close()
+        return { dataUrl }
+    } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Capture failed' }
     } finally {
         await browser.close()
     }
-
-    return { captured, errors }
 }
