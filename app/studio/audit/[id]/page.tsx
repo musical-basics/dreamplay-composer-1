@@ -142,25 +142,23 @@ export default function ScoreAuditPage() {
     const [renderCaptures, setRenderCaptures] = useState<Map<number, string>>(new Map())
     const [captureProgress, setCaptureProgress] = useState<string | null>(null)
 
-    // ── Handle render complete — auto-capture all measures on this page ──
+    // ── Handle render complete — auto-capture all measures via Canvas backend ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
         setRenderResult(result)
 
-        // Auto-capture all measures on this page after a short delay (for font settling)
-        const container = vexflowContainerRef.current
-        if (!container) return
+        if (!paginatedScore) return
 
+        // Auto-capture using a hidden Canvas-backend re-render (fonts work natively)
         setTimeout(async () => {
             setCaptureProgress('Capturing measures...')
             try {
                 await captureAllMeasures(
-                    container,
+                    paginatedScore,
                     result.measureXMap,
                     result.measureWidthMap,
                     result.systemYMap,
                     (measureNum, pngDataUrl) => {
                         setRenderCaptures(prev => new Map(prev).set(measureNum, pngDataUrl))
-                        // Save to local filesystem in the background
                         saveRenderCapture(configId, measureNum, pngDataUrl).catch(() => {})
                     },
                 )
@@ -169,8 +167,8 @@ export default function ScoreAuditPage() {
             } finally {
                 setCaptureProgress(null)
             }
-        }, 800) // Wait for font settling
-    }, [configId])
+        }, 800)
+    }, [configId, paginatedScore])
 
     // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,10 +203,9 @@ export default function ScoreAuditPage() {
 
         try {
             if (!rendered) {
-                const container = vexflowContainerRef.current
-                if (!container || !renderResult) throw new Error('No render available')
+                if (!paginatedScore || !renderResult) throw new Error('No render available')
                 rendered = await captureSingleMeasure(
-                    container, selectedMeasure,
+                    paginatedScore, selectedMeasure,
                     renderResult.measureXMap, renderResult.measureWidthMap,
                     renderResult.systemYMap,
                 )
@@ -232,7 +229,7 @@ export default function ScoreAuditPage() {
             setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pending'))
             setCapturing(false)
         }
-    }, [selectedMeasure, referenceImages, renderCaptures, selectedModel, renderResult])
+    }, [selectedMeasure, referenceImages, renderCaptures, selectedModel, renderResult, paginatedScore])
 
     // ── Mark as OK / Skip ──
     const markAsPass = useCallback(() => {
