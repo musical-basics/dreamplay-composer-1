@@ -1,123 +1,107 @@
 // components/score/measureCropper.ts
 //
-// Captures a single measure from the VexFlow SVG by:
-// 1. Cloning the SVG
-// 2. Embedding font-face data from document.fonts (so music glyphs render)
-// 3. Setting viewBox to crop to the measure
-// 4. Rasterizing via Image + Canvas
+// Auto-captures all measures from the VexFlow render as PNGs.
+// Uses html2canvas on a hidden off-screen container that shows each
+// measure via CSS clipping of the live SVG — fonts render correctly
+// because the browser has already loaded them for the live render.
 
 const PADDING = 8
 const SCALE = 2
 
 /**
- * Build @font-face CSS rules by extracting loaded FontFace entries
- * and re-fetching their source URLs (base64 data URIs from dreamflow).
+ * Capture all visible measures from the VexFlow container as PNGs.
+ * Creates a temporary off-screen div for each measure, clips the SVG
+ * content via CSS overflow + transform, and captures with html2canvas.
+ *
+ * @param container - The DOM element wrapping the VexFlow SVG
+ * @param measureXMap - Map of measure number → X position
+ * @param measureWidthMap - Map of measure number → width
+ * @param systemY - System Y bounds { top, height }
+ * @param onCapture - Callback fired for each captured measure (measureNum, pngDataUrl)
  */
-async function buildFontFaceCSS(): Promise<string> {
-    const rules: string[] = []
+export async function captureAllMeasures(
+    container: HTMLElement,
+    measureXMap: Map<number, number>,
+    measureWidthMap: Map<number, number>,
+    systemY: { top: number; height: number },
+    onCapture: (measureNum: number, pngDataUrl: string) => void,
+): Promise<void> {
+    const svgEl = container.querySelector('svg')
+    if (!svgEl) return
 
-    // Import font data directly from dreamflow's font modules
-    // These export base64 data URIs like "data:font/woff2;charset=utf-8;base64,..."
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fontImport = async (p: string): Promise<any> => import(/* webpackIgnore: true */ p)
-        const [bravuraMod, acadMod, acadBoldMod] = await Promise.all([
-            fontImport('dreamflow/build/esm/src/fonts/bravura.js'),
-            fontImport('dreamflow/build/esm/src/fonts/academico.js'),
-            fontImport('dreamflow/build/esm/src/fonts/academicobold.js'),
-        ])
-        const Bravura = bravuraMod?.Bravura as string | undefined
-        const Academico = acadMod?.Academico as string | undefined
-        const AcademicoBold = acadBoldMod?.AcademicoBold as string | undefined
+    const { default: html2canvas } = await import('html2canvas-pro')
 
-        if (Bravura) {
-            rules.push(`@font-face { font-family: "Bravura"; src: url("${Bravura}") format("woff2"); }`)
+    // Process each measure
+    const measureNums = [...measureXMap.keys()].sort((a, b) => a - b)
+
+    for (const m of measureNums) {
+        const x = measureXMap.get(m)!
+        const w = measureWidthMap.get(m)!
+        const clipX = Math.max(0, x - PADDING)
+        const clipY = Math.max(0, systemY.top - PADDING)
+        const clipW = w + PADDING * 2
+        const clipH = systemY.height + PADDING * 2
+
+        // Create a temporary off-screen wrapper that clips to this measure
+        const wrapper = document.createElement('div')
+        wrapper.style.cssText = `
+            position: fixed;
+            left: -99999px;
+            top: 0;
+            width: ${clipW}px;
+            height: ${clipH}px;
+            overflow: hidden;
+            background: white;
+        `
+        const inner = document.createElement('div')
+        inner.style.cssText = `
+            position: absolute;
+            left: ${-clipX}px;
+            top: ${-clipY}px;
+        `
+        // Clone the SVG and append — this preserves font rendering
+        // because the clone inherits the document's font context
+        const svgClone = svgEl.cloneNode(true) as SVGSVGElement
+        inner.appendChild(svgClone)
+        wrapper.appendChild(inner)
+        document.body.appendChild(wrapper)
+
+        try {
+            const canvas = await html2canvas(wrapper, {
+                backgroundColor: '#ffffff',
+                scale: SCALE,
+                useCORS: true,
+                width: clipW,
+                height: clipH,
+            })
+            onCapture(m, canvas.toDataURL('image/png'))
+        } catch (err) {
+            console.error(`[measureCropper] Failed to capture M${m}:`, err)
+        } finally {
+            document.body.removeChild(wrapper)
         }
-        if (Academico) {
-            rules.push(`@font-face { font-family: "Academico"; src: url("${Academico}") format("woff2"); }`)
-        }
-        if (AcademicoBold) {
-            rules.push(`@font-face { font-family: "Academico"; font-weight: bold; src: url("${AcademicoBold}") format("woff2"); }`)
-        }
-    } catch (err) {
-        console.warn('[measureCropper] Could not import dreamflow font modules:', err)
     }
-
-    return rules.join('\n')
 }
 
-// Cache the font CSS so we only build it once
-let fontCSSCache: string | null = null
-
 /**
- * Capture a single measure from the VexFlow SVG as a base64 PNG.
- * Embeds font data directly into the SVG clone so music glyphs render
- * correctly when rasterized via Image + Canvas.
- *
- * @param svgElement - The live SVG element from VexFlowRenderer's container
- * @param measureX - X position of the measure (from measureXMap)
- * @param measureWidth - Width of the measure (from measureWidthMap)
- * @param systemY - System Y bounds (from systemYMap: { top, height })
- * @returns base64 PNG data URL
+ * Capture a single measure. Convenience wrapper around captureAllMeasures.
  */
-export async function captureMeasure(
-    svgElement: SVGSVGElement,
-    measureX: number,
-    measureWidth: number,
+export async function captureSingleMeasure(
+    container: HTMLElement,
+    measureNum: number,
+    measureXMap: Map<number, number>,
+    measureWidthMap: Map<number, number>,
     systemY: { top: number; height: number },
-): Promise<string> {
-    // Build font CSS (cached after first call)
-    if (fontCSSCache === null) {
-        fontCSSCache = await buildFontFaceCSS()
-    }
+): Promise<string | null> {
+    let result: string | null = null
 
-    // Clone the SVG
-    const clone = svgElement.cloneNode(true) as SVGSVGElement
+    // Filter maps to just this measure
+    const xMap = new Map([[measureNum, measureXMap.get(measureNum)!]])
+    const wMap = new Map([[measureNum, measureWidthMap.get(measureNum)!]])
 
-    // Inject font-face CSS into the SVG
-    if (fontCSSCache) {
-        const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
-        styleEl.textContent = fontCSSCache
-        clone.insertBefore(styleEl, clone.firstChild)
-    }
-
-    // Set viewBox to crop to the measure
-    const vbX = Math.max(0, measureX - PADDING)
-    const vbY = Math.max(0, systemY.top - PADDING)
-    const vbW = measureWidth + PADDING * 2
-    const vbH = systemY.height + PADDING * 2
-    clone.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`)
-    clone.setAttribute('width', String(vbW * SCALE))
-    clone.setAttribute('height', String(vbH * SCALE))
-
-    // Remove any inline styles on the clone root that might interfere
-    clone.removeAttribute('style')
-
-    // Serialize to blob URL
-    const serializer = new XMLSerializer()
-    const svgString = serializer.serializeToString(clone)
-    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-
-    // Rasterize via Image + Canvas
-    return new Promise<string>((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-            const canvas = document.createElement('canvas')
-            canvas.width = img.width
-            canvas.height = img.height
-            const ctx = canvas.getContext('2d')
-            if (!ctx) { reject(new Error('Canvas context unavailable')); return }
-            ctx.fillStyle = '#ffffff'
-            ctx.fillRect(0, 0, canvas.width, canvas.height)
-            ctx.drawImage(img, 0, 0)
-            URL.revokeObjectURL(blobUrl)
-            resolve(canvas.toDataURL('image/png'))
-        }
-        img.onerror = () => {
-            URL.revokeObjectURL(blobUrl)
-            reject(new Error('Failed to rasterize SVG'))
-        }
-        img.src = blobUrl
-    })
+    await captureAllMeasures(
+        container, xMap, wMap, systemY,
+        (_m, png) => { result = png },
+    )
+    return result
 }

@@ -190,6 +190,21 @@ function getRefPath(configId: string, measureNum: number): string {
     return path.join(REFS_DIR, configId, `m${measureNum}.png`)
 }
 
+function getRenderPath(configId: string, measureNum: number): string {
+    return path.join(REFS_DIR, configId, `m${measureNum}_render.png`)
+}
+
+export async function saveRenderCapture(
+    configId: string,
+    measureNum: number,
+    base64DataUrl: string,
+): Promise<void> {
+    const dir = path.join(REFS_DIR, configId)
+    await fs.mkdir(dir, { recursive: true })
+    const raw = base64DataUrl.replace(/^data:image\/[^;]+;base64,/, '')
+    await fs.writeFile(getRenderPath(configId, measureNum), raw, 'base64')
+}
+
 export async function saveReferenceImage(
     configId: string,
     measureNum: number,

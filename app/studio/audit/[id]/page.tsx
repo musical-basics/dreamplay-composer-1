@@ -9,11 +9,11 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { parseMusicXml } from '@/lib/score/MusicXmlParser'
-import type { IntermediateScore, IntermediateMeasure } from '@/lib/score/IntermediateScore'
+import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
-import { captureMeasure } from '@/components/score/measureCropper'
+import { captureAllMeasures, captureSingleMeasure } from '@/components/score/measureCropper'
 import { fetchConfigById } from '@/app/actions/config'
-import { runScoreAudit, fetchAvailableModels, saveReferenceImage, loadAllReferenceImages, type AuditResult } from '@/app/actions/scoreAudit'
+import { runScoreAudit, fetchAvailableModels, saveReferenceImage, saveRenderCapture, loadAllReferenceImages, type AuditResult } from '@/app/actions/scoreAudit'
 import type { SongConfig } from '@/lib/types'
 
 type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
@@ -138,30 +138,39 @@ export default function ScoreAuditPage() {
         })
     }, [configId])
 
-    // ── Handle render complete ──
+    // Captured render images per measure (keyed by absolute measure number)
+    const [renderCaptures, setRenderCaptures] = useState<Map<number, string>>(new Map())
+    const [captureProgress, setCaptureProgress] = useState<string | null>(null)
+
+    // ── Handle render complete — auto-capture all measures on this page ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
         setRenderResult(result)
-    }, [])
 
-    // ── Capture a single measure by embedding fonts into cloned SVG ──
-    const captureSelectedMeasure = useCallback(async (measureNum: number): Promise<string | null> => {
+        // Auto-capture all measures on this page after a short delay (for font settling)
         const container = vexflowContainerRef.current
-        if (!container || !renderResult) return null
+        if (!container) return
 
-        const svgEl = container.querySelector('svg') as SVGSVGElement | null
-        if (!svgEl) return null
-
-        const x = renderResult.measureXMap.get(measureNum)
-        const w = renderResult.measureWidthMap.get(measureNum)
-        if (x === undefined || w === undefined) return null
-
-        try {
-            return await captureMeasure(svgEl, x, w, renderResult.systemYMap)
-        } catch (err) {
-            console.error('Capture failed:', err)
-            return null
-        }
-    }, [renderResult])
+        setTimeout(async () => {
+            setCaptureProgress('Capturing measures...')
+            try {
+                await captureAllMeasures(
+                    container,
+                    result.measureXMap,
+                    result.measureWidthMap,
+                    result.systemYMap,
+                    (measureNum, pngDataUrl) => {
+                        setRenderCaptures(prev => new Map(prev).set(measureNum, pngDataUrl))
+                        // Save to local filesystem in the background
+                        saveRenderCapture(configId, measureNum, pngDataUrl).catch(() => {})
+                    },
+                )
+            } catch (err) {
+                console.error('Auto-capture failed:', err)
+            } finally {
+                setCaptureProgress(null)
+            }
+        }, 800) // Wait for font settling
+    }, [configId])
 
     // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,13 +196,23 @@ export default function ScoreAuditPage() {
         const ref = referenceImages.get(selectedMeasure)
         if (!ref) return
 
+        // Use pre-captured render, or capture on-demand as fallback
+        let rendered: string | null = renderCaptures.get(selectedMeasure) ?? null
+
         setAuditError(null)
         setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'auditing'))
         setCapturing(true)
 
         try {
-            // Capture just this measure on-demand
-            const rendered = await captureSelectedMeasure(selectedMeasure)
+            if (!rendered) {
+                const container = vexflowContainerRef.current
+                if (!container || !renderResult) throw new Error('No render available')
+                rendered = await captureSingleMeasure(
+                    container, selectedMeasure,
+                    renderResult.measureXMap, renderResult.measureWidthMap,
+                    renderResult.systemYMap,
+                )
+            }
             if (!rendered) throw new Error('Failed to capture measure render')
 
             setCapturing(false)
@@ -213,7 +232,7 @@ export default function ScoreAuditPage() {
             setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pending'))
             setCapturing(false)
         }
-    }, [selectedMeasure, referenceImages, selectedModel, captureSelectedMeasure])
+    }, [selectedMeasure, referenceImages, renderCaptures, selectedModel, renderResult])
 
     // ── Mark as OK / Skip ──
     const markAsPass = useCallback(() => {
@@ -284,22 +303,6 @@ export default function ScoreAuditPage() {
     const selectedOnPage = selectedMeasure
         ? selectedMeasure >= pageStartMeasure && selectedMeasure < pageStartMeasure + MEASURES_PER_PAGE
         : false
-
-    // Measure preview via CSS clip — show the live SVG cropped to the selected measure
-    const previewStyle = useMemo(() => {
-        if (!selectedMeasure || !renderResult || !selectedOnPage) return null
-        const x = renderResult.measureXMap.get(selectedMeasure)
-        const w = renderResult.measureWidthMap.get(selectedMeasure)
-        if (x === undefined || w === undefined) return null
-        const { top, height } = renderResult.systemYMap
-        const padding = 8
-        return {
-            clipX: Math.max(0, x - padding),
-            clipY: Math.max(0, top - padding),
-            clipW: w + padding * 2,
-            clipH: height + padding * 2,
-        }
-    }, [selectedMeasure, renderResult, selectedOnPage])
 
     if (loading) {
         return (
@@ -423,7 +426,7 @@ export default function ScoreAuditPage() {
                                 {/* Clickable measure overlay */}
                                 {renderResult && (
                                     <div className="absolute inset-0 pointer-events-none">
-                                        {paginatedScore.measures.map((measure, i) => {
+                                        {paginatedScore.measures.map((measure) => {
                                             const m = measure.measureNumber
                                             const x = renderResult.measureXMap.get(m)
                                             const w = renderResult.measureWidthMap.get(m)
@@ -488,31 +491,23 @@ export default function ScoreAuditPage() {
 
                             {/* Panel content */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                {/* Live CSS-clipped preview of the measure */}
+                                {/* Captured render of the measure (what Claude sees) */}
                                 <div className="space-y-2">
-                                    <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
+                                        {captureProgress && <span className="text-[10px] text-purple-500">{captureProgress}</span>}
+                                    </div>
                                     <div className="border border-zinc-300 rounded-lg bg-white overflow-hidden min-h-[100px] flex items-center justify-center">
-                                        {previewStyle && vexflowContainerRef.current ? (
-                                            <div
-                                                style={{
-                                                    width: previewStyle.clipW,
-                                                    height: previewStyle.clipH,
-                                                    overflow: 'hidden',
-                                                    position: 'relative',
-                                                }}
-                                            >
-                                                {/* Clone the SVG inline for the preview using dangerouslySetInnerHTML
-                                                     This is a static snapshot — no interactivity needed */}
-                                                <div
-                                                    style={{
-                                                        position: 'absolute',
-                                                        left: -previewStyle.clipX,
-                                                        top: -previewStyle.clipY,
-                                                    }}
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: vexflowContainerRef.current.querySelector('svg')?.outerHTML ?? '',
-                                                    }}
-                                                />
+                                        {selectedMeasure && renderCaptures.has(selectedMeasure) ? (
+                                            <img
+                                                src={renderCaptures.get(selectedMeasure)}
+                                                alt={`Measure ${selectedMeasure} render`}
+                                                className="max-w-full"
+                                            />
+                                        ) : captureProgress ? (
+                                            <div className="text-center p-4">
+                                                <Loader2 className="w-5 h-5 animate-spin text-purple-400 mx-auto mb-1" />
+                                                <p className="text-[10px] text-zinc-400">Capturing...</p>
                                             </div>
                                         ) : selectedOnPage ? (
                                             <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
