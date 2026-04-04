@@ -251,3 +251,24 @@ export async function loadAllReferenceImages(
     }
     return map
 }
+
+export async function loadAllRenderCaptures(
+    configId: string,
+): Promise<Map<number, string>> {
+    const dir = path.join(REFS_DIR, configId)
+    const map = new Map<number, string>()
+    try {
+        const files = await fs.readdir(dir)
+        for (const file of files) {
+            const match = file.match(/^m(\d+)_render\.png$/)
+            if (match) {
+                const measureNum = parseInt(match[1])
+                const data = await fs.readFile(path.join(dir, file))
+                map.set(measureNum, `data:image/png;base64,${data.toString('base64')}`)
+            }
+        }
+    } catch {
+        // Directory doesn't exist yet
+    }
+    return map
+}

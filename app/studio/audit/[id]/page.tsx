@@ -11,9 +11,8 @@ import { Button } from '@/components/ui/button'
 import { parseMusicXml } from '@/lib/score/MusicXmlParser'
 import type { IntermediateScore } from '@/lib/score/IntermediateScore'
 import { VexFlowRenderer, type VexFlowRenderResult } from '@/components/score/VexFlowRenderer'
-import { captureAllMeasures, captureSingleMeasure } from '@/components/score/measureCropper'
 import { fetchConfigById } from '@/app/actions/config'
-import { runScoreAudit, fetchAvailableModels, saveReferenceImage, saveRenderCapture, loadAllReferenceImages, type AuditResult } from '@/app/actions/scoreAudit'
+import { runScoreAudit, fetchAvailableModels, saveReferenceImage, saveRenderCapture, loadAllReferenceImages, loadAllRenderCaptures, type AuditResult } from '@/app/actions/scoreAudit'
 import type { SongConfig } from '@/lib/types'
 
 type MeasureStatus = 'pending' | 'auditing' | 'pass' | 'fail' | 'skipped'
@@ -61,7 +60,7 @@ export default function ScoreAuditPage() {
 
     // Audit state
     const [auditError, setAuditError] = useState<string | null>(null)
-    const [capturing, setCapturing] = useState(false)
+    // (capturing removed — renders are uploaded manually now)
 
     // Model selection — start with defaults so dropdown is always visible
     const [models, setModels] = useState<{ id: string; name: string }[]>([
@@ -138,37 +137,47 @@ export default function ScoreAuditPage() {
         })
     }, [configId])
 
-    // Captured render images per measure (keyed by absolute measure number)
+    // Render captures per measure (loaded from disk or uploaded manually)
     const [renderCaptures, setRenderCaptures] = useState<Map<number, string>>(new Map())
-    const [captureProgress, setCaptureProgress] = useState<string | null>(null)
 
-    // ── Handle render complete — auto-capture all measures via Canvas backend ──
+    // ── Handle render complete ──
     const handleRenderComplete = useCallback((result: VexFlowRenderResult) => {
         setRenderResult(result)
+    }, [])
 
-        if (!paginatedScore) return
-
-        // Auto-capture using a hidden Canvas-backend re-render (fonts work natively)
-        setTimeout(async () => {
-            setCaptureProgress('Capturing measures...')
-            try {
-                await captureAllMeasures(
-                    paginatedScore,
-                    result.measureXMap,
-                    result.measureWidthMap,
-                    result.systemYMap,
-                    (measureNum, pngDataUrl) => {
-                        setRenderCaptures(prev => new Map(prev).set(measureNum, pngDataUrl))
-                        saveRenderCapture(configId, measureNum, pngDataUrl).catch(() => {})
-                    },
-                )
-            } catch (err) {
-                console.error('Auto-capture failed:', err)
-            } finally {
-                setCaptureProgress(null)
+    // Load saved render captures from local filesystem
+    useEffect(() => {
+        if (!configId) return
+        loadAllRenderCaptures(configId).then(saved => {
+            if (saved.size > 0) {
+                setRenderCaptures(prev => {
+                    const merged = new Map(prev)
+                    saved.forEach((v, k) => { if (!merged.has(k)) merged.set(k, v) })
+                    return merged
+                })
             }
-        }, 800)
-    }, [configId, paginatedScore])
+        })
+    }, [configId])
+
+    // File input for render upload
+    const renderInputRef = useRef<HTMLInputElement>(null)
+
+    // ── Manual render save: user screenshots the live view and uploads ──
+    const handleRenderUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file || !selectedMeasure) return
+
+        const reader = new FileReader()
+        reader.onload = () => {
+            const dataUrl = reader.result as string
+            setRenderCaptures(prev => new Map(prev).set(selectedMeasure, dataUrl))
+            saveRenderCapture(configId, selectedMeasure, dataUrl).catch(err => {
+                console.error('Failed to save render locally:', err)
+            })
+        }
+        reader.readAsDataURL(file)
+        if (renderInputRef.current) renderInputRef.current.value = ''
+    }, [selectedMeasure, configId])
 
     // ── Handle reference image upload for current measure ──
     const handleReferenceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,25 +203,16 @@ export default function ScoreAuditPage() {
         const ref = referenceImages.get(selectedMeasure)
         if (!ref) return
 
-        // Use pre-captured render, or capture on-demand as fallback
-        let rendered: string | null = renderCaptures.get(selectedMeasure) ?? null
+        const rendered = renderCaptures.get(selectedMeasure)
+        if (!rendered) {
+            setAuditError('Upload a render screenshot first (use the "Save Render" button)')
+            return
+        }
 
         setAuditError(null)
         setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'auditing'))
-        setCapturing(true)
 
         try {
-            if (!rendered) {
-                if (!paginatedScore || !renderResult) throw new Error('No render available')
-                rendered = await captureSingleMeasure(
-                    paginatedScore, selectedMeasure,
-                    renderResult.measureXMap, renderResult.measureWidthMap,
-                    renderResult.systemYMap,
-                )
-            }
-            if (!rendered) throw new Error('Failed to capture measure render')
-
-            setCapturing(false)
 
             const result = await runScoreAudit(ref, rendered, selectedModel, {
                 start: selectedMeasure,
@@ -227,9 +227,8 @@ export default function ScoreAuditPage() {
         } catch (e) {
             setAuditError(e instanceof Error ? e.message : 'Audit failed')
             setMeasureStatuses(prev => new Map(prev).set(selectedMeasure, 'pending'))
-            setCapturing(false)
         }
-    }, [selectedMeasure, referenceImages, renderCaptures, selectedModel, renderResult, paginatedScore])
+    }, [selectedMeasure, referenceImages, renderCaptures, selectedModel])
 
     // ── Mark as OK / Skip ──
     const markAsPass = useCallback(() => {
@@ -488,11 +487,26 @@ export default function ScoreAuditPage() {
 
                             {/* Panel content */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                {/* Captured render of the measure (what Claude sees) */}
+                                {/* VexFlow render (uploaded screenshot) */}
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wide">VexFlow Render</h3>
-                                        {captureProgress && <span className="text-[10px] text-purple-500">{captureProgress}</span>}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-6 text-xs"
+                                            onClick={() => renderInputRef.current?.click()}
+                                        >
+                                            <Upload className="w-3 h-3 mr-1" />
+                                            {selectedMeasure && renderCaptures.has(selectedMeasure) ? 'Replace' : 'Save Render'}
+                                        </Button>
+                                        <input
+                                            ref={renderInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleRenderUpload}
+                                        />
                                     </div>
                                     <div className="border border-zinc-300 rounded-lg bg-white overflow-hidden min-h-[100px] flex items-center justify-center">
                                         {selectedMeasure && renderCaptures.has(selectedMeasure) ? (
@@ -501,15 +515,11 @@ export default function ScoreAuditPage() {
                                                 alt={`Measure ${selectedMeasure} render`}
                                                 className="max-w-full"
                                             />
-                                        ) : captureProgress ? (
-                                            <div className="text-center p-4">
-                                                <Loader2 className="w-5 h-5 animate-spin text-purple-400 mx-auto mb-1" />
-                                                <p className="text-[10px] text-zinc-400">Capturing...</p>
-                                            </div>
-                                        ) : selectedOnPage ? (
-                                            <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
                                         ) : (
-                                            <p className="text-xs text-zinc-400 p-4">Navigate to page {Math.floor((selectedMeasure - 1) / MEASURES_PER_PAGE) + 1} to see preview</p>
+                                            <div className="text-center text-zinc-400 p-4">
+                                                <Upload className="w-6 h-6 mx-auto mb-1 opacity-40" />
+                                                <p className="text-xs">Screenshot this measure and upload</p>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -550,11 +560,11 @@ export default function ScoreAuditPage() {
                                 {/* Audit button */}
                                 <Button
                                     onClick={handleRunAudit}
-                                    disabled={!currentRef || !selectedOnPage || currentStatus === 'auditing'}
+                                    disabled={!currentRef || !(selectedMeasure && renderCaptures.has(selectedMeasure)) || currentStatus === 'auditing'}
                                     className="w-full bg-purple-600 hover:bg-purple-700 text-white"
                                 >
                                     {currentStatus === 'auditing' ? (
-                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {capturing ? 'Capturing...' : 'Analyzing...'}</>
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
                                     ) : (
                                         <>Run Audit (Enter)</>
                                     )}
